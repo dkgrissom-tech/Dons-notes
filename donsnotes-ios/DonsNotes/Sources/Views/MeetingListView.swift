@@ -5,8 +5,10 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     @State private var meetings: [Meeting] = []
     @State private var isShowingRecording = false
     @State private var isShowingProfile = false
+    @State private var isShowingPricing = false
     @State private var isLoading = false
     
+    private let hasSeenPricingKey = "has_seen_pricing_v1"
     var body: some View {
         NavigationView {
             VStack {
@@ -61,7 +63,21 @@ struct MeetingListView<T: APIServiceProtocol>: View {
             .sheet(isPresented: $isShowingProfile) {
                 ProfileView()
             }
-            .onAppear(perform: refresh)
+            .sheet(isPresented: $isShowingPricing) {
+                PricingScreen()
+            }
+            .onAppear {
+                self.meetings = MeetingCacheService.shared.loadMeetings()
+                refresh()
+                
+                if !UserDefaults.standard.bool(forKey: hasSeenPricingKey) {
+                    isShowingPricing = true
+                    UserDefaults.standard.set(true, forKey: hasSeenPricingKey)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .startRecording)) { _ in
+                isShowingRecording = true
+            }
         }
     }
     

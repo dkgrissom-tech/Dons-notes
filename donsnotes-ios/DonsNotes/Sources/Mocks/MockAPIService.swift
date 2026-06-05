@@ -20,6 +20,7 @@ class MockAPIService: APIServiceProtocol {
     
     func fetchMeetings() async throws -> [Meeting] {
         try await Task.sleep(nanoseconds: 500_000_000)
+        MeetingCacheService.shared.saveMeetings(meetings)
         return meetings
     }
     

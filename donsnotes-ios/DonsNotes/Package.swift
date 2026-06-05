@@ -1,6 +1,5 @@
 // swift-tools-version: 5.9
 import PackageDescription
-
 let package = Package(
     name: "DonsNotes",
     platforms: [
@@ -14,6 +13,9 @@ let package = Package(
     targets: [
         .target(
             name: "DonsNotes",
-            path: "Sources")
+            path: "Sources",
+            resources: [
+                .process("../Resources/Assets.xcassets")
+            ])
     ]
 )

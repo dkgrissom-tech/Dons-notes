@@ -3,6 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @ObservedObject var profileService = ProfileService.shared
     @State private var name: String = ""
+    @State private var isShowingPricing = false
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -10,6 +11,19 @@ struct ProfileView: View {
             Form {
                 Section(header: Text("User Information")) {
                     TextField("Display Name", text: $name)
+                }
+                
+                Section(header: Text("Subscription")) {
+                    HStack {
+                        Text("Current Plan")
+                        Spacer()
+                        Text(SubscriptionService.shared.currentTier.title)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Button("View Plans & Pricing") {
+                        isShowingPricing = true
+                    }
                 }
                 
                 Section {
@@ -30,6 +44,9 @@ struct ProfileView: View {
                         dismiss()
                     }
                 }
+            }
+            .sheet(isPresented: $isShowingPricing) {
+                PricingScreen()
             }
         }
     }

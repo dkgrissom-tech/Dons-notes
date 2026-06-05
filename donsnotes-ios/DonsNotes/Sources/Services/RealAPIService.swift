@@ -52,7 +52,9 @@ class RealAPIService: APIServiceProtocol {
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode([Meeting.self], from: data)
+        let meetings = try decoder.decode([Meeting.self], from: data)
+        MeetingCacheService.shared.saveMeetings(meetings)
+        return meetings
     }
     
     func fetchMeetingDetails(id: UUID) async throws -> Meeting {

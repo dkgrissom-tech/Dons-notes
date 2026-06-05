@@ -5,6 +5,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @ObservedObject var apiService: T
     @ObservedObject var contactService = ContactService.shared
     @ObservedObject var profileService = ProfileService.shared
+    @StateObject var speechService = SpeechRecognizerService()
     @State private var attendees: [Attendee] = []
     @State private var newAttendeeEmail = ""
     @State private var newAttendeeName = ""
@@ -106,9 +107,42 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         Image(systemName: "plus.circle.fill")
                             .font(.title)
                     }
+                    
+                    Button(action: toggleListening) {
+                        Image(systemName: speechService.isListening ? "mic.fill" : "mic")
+                            .font(.title)
+                            .foregroundColor(speechService.isListening ? .red : .blue)
+                    }
                 }
                 .padding(.horizontal)
                 
+                if speechService.isListening {
+                    HStack(spacing: 4) {
+                        Text("Listening...")
+                            .font(.caption)
+                            .foregroundColor(.red)
+                        
+                        ForEach(0..<5) { index in
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(Color.red)
+                                .frame(width: 3, height: CGFloat.random(in: 5...15))
+                        }
+                    }
+                    .padding(.bottom, 5)
+                }
+                
+                if let speechError = speechService.error {
+                    Text(speechError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal)
+                }
+            }
+            .onChange(of: speechService.transcript) { newValue in
+                parseTranscript(newValue)
+            }
+            
+            VStack(alignment: .leading) {
                 if !attendees.isEmpty {
                     List {
                         ForEach(attendees) { attendee in
@@ -240,6 +274,31 @@ struct RecordingView<T: APIServiceProtocol>: View {
     
     func removeAttendee(at offsets: IndexSet) {
         attendees.remove(atOffsets: offsets)
+    }
+    
+    func toggleListening() {
+        if speechService.isListening {
+            speechService.stopListening()
+        } else {
+            speechService.startListening()
+        }
+    }
+    
+    func parseTranscript(_ text: String) {
+        let components = text.components(separatedBy: .whitespacesAndNewlines)
+        var nameParts: [String] = []
+        
+        for component in components {
+            if component.contains("@") {
+                newAttendeeEmail = component.lowercased()
+            } else if !component.isEmpty {
+                nameParts.append(component)
+            }
+        }
+        
+        if !nameParts.isEmpty {
+            newAttendeeName = nameParts.joined(separator: " ")
+        }
     }
     
     func uploadMeeting(url: URL) {
