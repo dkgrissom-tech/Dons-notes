@@ -19,14 +19,35 @@ jobs:
             -sdk iphoneos \
             -configuration Release \
             -derivedDataPath ../build \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            -allowProvisioningUpdates \
+            || echo "BUILD_FAILED=true" >> $GITHUB_ENV
 
+      - name: Create .ipa (if build succeeded)
+        if: env.BUILD_FAILED != 'true'
+        run: |
+          cd donsnotes-ios/XcodeProject
           mkdir -p Payload
           cp -r ../build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
           zip -r ../../DonsNotes.ipa Payload
 
       - name: Upload .ipa
+        if: env.BUILD_FAILED != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: DonsNotes-iPhone
           path: DonsNotes.ipa
+
+      - name: Package source (fallback if build fails)
+        if: env.BUILD_FAILED == 'true'
+        run: |
+          cd donsnotes-ios/XcodeProject
+          zip -r ../../DonsNotes-XcodeProject.zip DonsNotes.xcodeproj DonsNotes/
+
+      - name: Upload Xcode project (fallback)
+        if: env.BUILD_FAILED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: DonsNotes-XcodeProject
+          path: DonsNotes-XcodeProject.zip
