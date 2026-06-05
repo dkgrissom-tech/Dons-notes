@@ -46,7 +46,7 @@ struct ProfileView: View {
                 }
             }
             .sheet(isPresented: $isShowingPricing) {
-                PricingScreen()
+                PlansView()
             }
         }
     }

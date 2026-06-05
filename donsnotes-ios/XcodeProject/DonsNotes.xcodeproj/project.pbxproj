@@ -7,6 +7,8 @@
     objects = {
 
 /* BEGIN PBXBuildFile */
+        110000012C10000100000060 /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000061 /* AppIntents.framework */; };
+        110000012C10000100000062 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000063 /* WidgetKit.framework */; };
         110000012C10000100000001 /* DonsNotesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000002 /* DonsNotesApp.swift */; };
         110000012C10000100000003 /* MockAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000004 /* MockAPIService.swift */; };
         110000012C10000100000005 /* Attendee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000006 /* Attendee.swift */; };
@@ -32,6 +34,8 @@
 /* END PBXBuildFile */
 
 /* BEGIN PBXFileReference */
+        110000012C10000100000061 /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = System/Library/Frameworks/AppIntents.framework; sourceTree = SDKROOT; };
+        110000012C10000100000063 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
         110000012C10000100000002 /* DonsNotesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/DonsNotesApp.swift; sourceTree = "<group>"; };
         110000012C10000100000004 /* MockAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Mocks/MockAPIService.swift; sourceTree = "<group>"; };
         110000012C10000100000006 /* Attendee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Models/Attendee.swift; sourceTree = "<group>"; };
@@ -63,6 +67,8 @@
             isa = PBXFrameworksBuildPhase;
             buildActionMask = 2147483647;
             files = (
+                110000012C10000100000060 /* AppIntents.framework in Frameworks */,
+                110000012C10000100000062 /* WidgetKit.framework in Frameworks */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };
@@ -73,6 +79,7 @@
             isa = PBXGroup;
             children = (
                 110000012C10000100000023 /* DonsNotes */,
+                110000012C10000100000064 /* Frameworks */,
                 110000012C10000100000024 /* Products */,
             );
             sourceTree = "<group>";
@@ -107,6 +114,15 @@
                 110000012C1000010000001F /* Info.plist */,
             );
             path = ../DonsNotes;
+            sourceTree = "<group>";
+        };
+        110000012C10000100000064 /* Frameworks */ = {
+            isa = PBXGroup;
+            children = (
+                110000012C10000100000061 /* AppIntents.framework */,
+                110000012C10000100000063 /* WidgetKit.framework */,
+            );
+            name = Frameworks;
             sourceTree = "<group>";
         };
         110000012C10000100000024 /* Products */ = {

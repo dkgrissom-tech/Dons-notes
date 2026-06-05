@@ -64,7 +64,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                 ProfileView()
             }
             .sheet(isPresented: $isShowingPricing) {
-                PricingScreen()
+                PlansView()
             }
             .onAppear {
                 self.meetings = MeetingCacheService.shared.loadMeetings()
