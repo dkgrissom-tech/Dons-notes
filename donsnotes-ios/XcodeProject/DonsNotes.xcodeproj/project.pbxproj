@@ -24,7 +24,7 @@
         110000012C10000100000031 /* SpeechRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000030 /* SpeechRecognizerService.swift */; };
         110000012C10000100000041 /* PricingPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000040 /* PricingPlan.swift */; };
         110000012C10000100000043 /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000042 /* SubscriptionService.swift */; };
-        110000012C10000100000045 /* PricingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000044 /* PricingScreen.swift */; };
+        110000012C10000100000045 /* PlansView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000044 /* PlansView.swift */; };
         110000012C10000100000047 /* DonsNotesIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000046 /* DonsNotesIntents.swift */; };
         110000012C10000100000049 /* DonsNotesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000048 /* DonsNotesWidget.swift */; };
         110000012C10000100000051 /* MeetingCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000050 /* MeetingCacheService.swift */; };
@@ -49,7 +49,7 @@
         110000012C10000100000030 /* SpeechRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/SpeechRecognizerService.swift; sourceTree = "<group>"; };
         110000012C10000100000040 /* PricingPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Models/PricingPlan.swift; sourceTree = "<group>"; };
         110000012C10000100000042 /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/SubscriptionService.swift; sourceTree = "<group>"; };
-        110000012C10000100000044 /* PricingScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Views/PricingScreen.swift; sourceTree = "<group>"; };
+        110000012C10000100000044 /* PlansView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Views/PlansView.swift; sourceTree = "<group>"; };
         110000012C10000100000046 /* DonsNotesIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/DonsNotesIntents.swift; sourceTree = "<group>"; };
         110000012C10000100000048 /* DonsNotesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Views/DonsNotesWidget.swift; sourceTree = "<group>"; };
         110000012C10000100000050 /* MeetingCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/MeetingCacheService.swift; sourceTree = "<group>"; };
@@ -92,19 +92,20 @@
                 110000012C10000100000030 /* SpeechRecognizerService.swift */,
                 110000012C10000100000040 /* PricingPlan.swift */,
                 110000012C10000100000042 /* SubscriptionService.swift */,
-                110000012C10000100000044 /* PricingScreen.swift */,
+                110000012C10000100000044 /* PlansView.swift */,
 
                 110000012C10000100000048 /* DonsNotesWidget.swift */,
                 110000012C10000100000050 /* MeetingCacheService.swift */,
                 110000012C10000100000014 /* RecordingView.swift */,
 
                 110000012C10000100000018 /* MeetingDetailView.swift */,
+                110000012C10000100000016 /* MeetingListView.swift */,
                 110000012C1000010000001A /* ContactPickerView.swift */,
                 110000012C1000010000001C /* ProfileView.swift */,
                 110000012C1000010000001E /* Assets.xcassets */,
                 110000012C1000010000001F /* Info.plist */,
             );
-            path = DonsNotes;
+            path = ../DonsNotes;
             sourceTree = "<group>";
         };
         110000012C10000100000024 /* Products */ = {
@@ -336,7 +337,7 @@
                 CODE_SIGN_STYLE = Automatic;
                 CURRENT_PROJECT_VERSION = 1;
                 GENERATE_INFOPLIST_FILE = YES;
-                INFOPLIST_FILE = DonsNotes/Info.plist;
+                INFOPLIST_FILE = ../DonsNotes/Info.plist;
                 INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
                 INFOPLIST_KEY_UILaunchScreen_Generation = YES;
                 LD_RUNPATH_SEARCH_PATHS = (
@@ -359,7 +360,7 @@
                 CODE_SIGN_STYLE = Automatic;
                 CURRENT_PROJECT_VERSION = 1;
                 GENERATE_INFOPLIST_FILE = YES;
-                INFOPLIST_FILE = DonsNotes/Info.plist;
+                INFOPLIST_FILE = ../DonsNotes/Info.plist;
                 INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
                 INFOPLIST_KEY_UILaunchScreen_Generation = YES;
                 LD_RUNPATH_SEARCH_PATHS = (
