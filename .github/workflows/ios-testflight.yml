@@ -1,0 +1,109 @@
+name: iOS · Signed build → TestFlight
+
+# Runs on:
+#   - push to main/master (auto-deploy every commit to TestFlight)
+#   - manual trigger from the Actions tab
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'donsnotes-ios/**'
+      - '.github/workflows/ios-testflight.yml'
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: 'TestFlight release notes'
+        required: false
+        default: 'Automated build from CI'
+
+# Only one release build at a time per branch (later commits cancel earlier in-flight ones)
+concurrency:
+  group: ios-testflight-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    name: Build, sign, upload to TestFlight
+    runs-on: macos-14   # Apple Silicon runner — fastest & supports latest Xcode
+
+    env:
+      # App Store Connect API key (replaces Apple ID password — much more secure)
+      APP_STORE_CONNECT_KEY_ID:      ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID:   ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_KEY_CONTENT }}
+
+      # Apple developer account
+      APPLE_ID:                      ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID:                 ${{ secrets.APPLE_TEAM_ID }}
+
+      # fastlane match — pulls signed certs from a private repo
+      MATCH_GIT_URL:                 ${{ secrets.MATCH_GIT_URL }}
+      MATCH_PASSWORD:                ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+
+      # Keychain password for the temporary CI keychain (any random string)
+      MATCH_KEYCHAIN_NAME:           "ci.keychain"
+      MATCH_KEYCHAIN_PASSWORD:       ${{ secrets.MATCH_KEYCHAIN_PASSWORD }}
+
+      # Release notes for testers
+      TESTFLIGHT_CHANGELOG:          ${{ github.event.inputs.changelog || format('CI build · {0}', github.sha) }}
+
+      # Avoid noisy interactive prompts
+      FASTLANE_SKIP_UPDATE_CHECK:    "1"
+      FASTLANE_HIDE_CHANGELOG:       "1"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # fastlane needs history to compute build numbers
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Set up Ruby + bundler cache
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: donsnotes-ios
+
+      - name: Install fastlane
+        working-directory: donsnotes-ios
+        run: bundle install --quiet
+
+      - name: Pre-flight check (verify all required secrets are set)
+        run: |
+          missing=()
+          for var in APP_STORE_CONNECT_KEY_ID APP_STORE_CONNECT_ISSUER_ID APP_STORE_CONNECT_KEY_CONTENT \
+                    APPLE_ID APPLE_TEAM_ID \
+                    MATCH_GIT_URL MATCH_PASSWORD MATCH_KEYCHAIN_PASSWORD; do
+            if [ -z "${!var}" ]; then missing+=("$var"); fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "❌ Missing required GitHub Secrets: ${missing[*]}"
+            echo "See SECRETS.md for setup instructions."
+            exit 1
+          fi
+          echo "✅ All required secrets are set"
+
+      - name: Run fastlane beta (build, sign, upload to TestFlight)
+        working-directory: donsnotes-ios
+        run: bundle exec fastlane beta
+
+      - name: Upload .ipa as workflow artifact (for AltStore/Sideloadly fallback)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DonsNotes-signed-ipa
+          path: donsnotes-ios/build/DonsNotes.ipa
+          retention-days: 30
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Build failed. Common causes:"
+          echo "::error::  • Secrets not configured → check SECRETS.md"
+          echo "::error::  • Apple Developer Program enrollment incomplete"
+          echo "::error::  • Bundle ID 'com.donsnotes.app' not registered at developer.apple.com"
+          echo "::error::  • match repo unreachable or wrong passphrase"

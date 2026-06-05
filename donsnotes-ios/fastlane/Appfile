@@ -1,0 +1,6 @@
+app_identifier("com.donsnotes.app")
+
+# Pulled from GitHub Secrets in CI
+apple_id(ENV["APPLE_ID"])           # Your Apple Developer account email
+team_id(ENV["APPLE_TEAM_ID"])       # 10-character Team ID from developer.apple.com → Membership
+itc_team_id(ENV["APPLE_TEAM_ID"])   # Same as team_id for individual accounts

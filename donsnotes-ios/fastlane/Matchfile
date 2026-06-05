@@ -1,0 +1,20 @@
+# Matchfile — central config for code-signing cert/profile sync
+#
+# `match` stores your distribution certs & provisioning profiles in a SEPARATE
+# private git repo, encrypted with a passphrase. CI clones that repo to install
+# the certs into a temporary keychain on every build. This is the standard way
+# to do iOS code signing in CI without sharing your physical .p12 files around.
+#
+# First-time setup (one time, from any Mac or via a Codespace with macOS):
+#   1. Create a new EMPTY private GitHub repo called "donsnotes-certificates"
+#   2. From this folder run: bundle exec fastlane match appstore
+#      → it will prompt for a passphrase (save it — you'll need it as a GitHub Secret)
+#      → it will generate a distribution cert + provisioning profile and push them to the repo
+#   3. Add MATCH_GIT_URL, MATCH_PASSWORD, and MATCH_GIT_BASIC_AUTHORIZATION to GitHub Secrets
+
+git_url(ENV["MATCH_GIT_URL"])      # e.g. https://github.com/dkgrissom-tech/donsnotes-certificates
+storage_mode("git")
+type("appstore")                   # "appstore" covers TestFlight + App Store
+app_identifier(["com.donsnotes.app"])
+username(ENV["APPLE_ID"])
+team_id(ENV["APPLE_TEAM_ID"])
