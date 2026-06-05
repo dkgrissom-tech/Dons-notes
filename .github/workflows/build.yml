@@ -1,4 +1,4 @@
-name: Package Don's Notes
+name: Build Don's Notes .ipa
 
 on:
   push:
@@ -6,31 +6,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  package:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Package Xcode project
+      - name: Build app
         run: |
-          cd donsnotes-ios/XcodeProject
-          zip -r ../../DonsNotes-Xcode.zip DonsNotes.xcodeproj DonsNotes/
-          cd ../DonsNotes
-          zip -r ../../DonsNotes-Sources.zip Sources/ Info.plist Resources/
+          cd donsnotes-ios/MinimalProject
+          xcodebuild -project DonsNotes.xcodeproj \
+            -scheme DonsNotes \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Upload Xcode project
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
+          zip -r ../../DonsNotes.ipa Payload
+
+      - name: Upload .ipa
         uses: actions/upload-artifact@v4
         with:
           name: DonsNotes-iPhone
-          path: |
-            DonsNotes-Xcode.zip
-            DonsNotes-Sources.zip
-
-      - name: Package Android project
-        run: zip -r DonsNotes-Android.zip donsnotes-android/
-
-      - name: Upload Android
-        uses: actions/upload-artifact@v4
-        with:
-          name: DonsNotes-Android
-          path: DonsNotes-Android.zip
+          path: DonsNotes.ipa
+          retention-days: 7
