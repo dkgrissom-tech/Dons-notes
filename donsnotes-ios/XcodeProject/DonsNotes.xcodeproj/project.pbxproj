@@ -93,6 +93,7 @@
                 110000012C10000100000040 /* PricingPlan.swift */,
                 110000012C10000100000042 /* SubscriptionService.swift */,
                 110000012C10000100000044 /* PlansView.swift */,
+                110000012C10000100000046 /* DonsNotesIntents.swift */,
 
                 110000012C10000100000048 /* DonsNotesWidget.swift */,
                 110000012C10000100000050 /* MeetingCacheService.swift */,
