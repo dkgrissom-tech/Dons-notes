@@ -1,0 +1,32 @@
+name: Build & Package Don's Notes .ipa
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build app into .ipa
+        run: |
+          cd donsnotes-ios/XcodeProject
+          xcodebuild -project DonsNotes.xcodeproj \
+            -scheme DonsNotes \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath ../build \
+            CODE_SIGNING_ALLOWED=NO
+
+          mkdir -p Payload
+          cp -r ../build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
+          zip -r ../../DonsNotes.ipa Payload
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: DonsNotes-iPhone
+          path: DonsNotes.ipa
