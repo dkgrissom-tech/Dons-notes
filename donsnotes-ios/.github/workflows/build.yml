@@ -16,7 +16,7 @@ jobs:
 
       - name: Build the app
         run: |
-          cd XcodeProject
+          cd donsnotes-ios/XcodeProject
           xcodebuild -project DonsNotes.xcodeproj \
             -scheme DonsNotes \
             -sdk iphoneos \
