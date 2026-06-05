@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Don\'s Notes</string>
+    <string name="cancel">Cancel</string>
+    <string name="save">Save</string>
+    <string name="done">Done</string>
+    <string name="close">Close</string>
+    <string name="start_recording">Start Recording</string>
+    <string name="stop_recording">Stop Recording</string>
+    <string name="upload_process">Upload &amp; Process</string>
+    <string name="discard_recording">Discard Recording</string>
+    <string name="send_recap_email">Send Recap Email</string>
+    <string name="no_meetings">No meetings yet</string>
+    <string name="add_attendees_prompt">Add attendees to start</string>
+    <string name="attendee_sign_in">Attendee Sign-In</string>
+    <string name="voice_input_description">Voice input for attendee name</string>
+</resources>

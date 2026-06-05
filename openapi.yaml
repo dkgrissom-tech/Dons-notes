@@ -1,0 +1,103 @@
+openapi: 3.0.3
+info:
+  title: Don's Notes API
+  description: API for transcribing meeting notes and sending summaries.
+  version: 1.0.0
+servers:
+  - url: https://api.donsnotes.com/v1
+paths:
+  /meetings/upload:
+    post:
+      summary: Upload a new meeting recording
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                attendees:
+                  type: string
+                  description: JSON array of attendee objects [{\"email\": \"...\", \"name\": \"...\"}]
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meeting'
+  /meetings:
+    get:
+      summary: List all meetings for the user
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Meeting'
+  /meetings/{meetingId}:
+    get:
+      summary: Get meeting details and status
+      parameters:
+        - name: meetingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Meeting'
+  /meetings/{meetingId}/send:
+    post:
+      summary: Send the summary email to attendees
+      parameters:
+        - name: meetingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Email sent successfully
+components:
+  schemas:
+    Meeting:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [UPLOADING, PENDING, TRANSCRIBING, SUMMARIZING, COMPLETED, SENT, FAILED]
+        audio_url:
+          type: string
+        transcript:
+          type: string
+        summary:
+          type: string
+        attendees:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attendee'
+        created_at:
+          type: string
+          format: date-time
+    Attendee:
+      type: object
+      properties:
+        email:
+          type: string
+        name:
+          type: string

@@ -1,0 +1,402 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {
+    };
+    objectVersion = 56;
+    objects = {
+
+/* BEGIN PBXBuildFile */
+        110000012C10000100000001 /* DonsNotesApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000002 /* DonsNotesApp.swift */; };
+        110000012C10000100000003 /* MockAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000004 /* MockAPIService.swift */; };
+        110000012C10000100000005 /* Attendee.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000006 /* Attendee.swift */; };
+        110000012C10000100000007 /* Meeting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000008 /* Meeting.swift */; };
+        110000012C10000100000009 /* APIServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000000A /* APIServiceProtocol.swift */; };
+        110000012C1000010000000B /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000000C /* AudioRecorder.swift */; };
+        110000012C1000010000000D /* RealAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000000E /* RealAPIService.swift */; };
+        110000012C1000010000000F /* ContactService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000010 /* ContactService.swift */; };
+        110000012C10000100000011 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000012 /* ProfileService.swift */; };
+        110000012C10000100000013 /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000014 /* RecordingView.swift */; };
+        110000012C10000100000015 /* MeetingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000016 /* MeetingListView.swift */; };
+        110000012C10000100000017 /* MeetingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000018 /* MeetingDetailView.swift */; };
+        110000012C10000100000019 /* ContactPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000001A /* ContactPickerView.swift */; };
+        110000012C1000010000001B /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000001C /* ProfileView.swift */; };
+        110000012C10000100000031 /* SpeechRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000030 /* SpeechRecognizerService.swift */; };
+        110000012C10000100000041 /* PricingPlan.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000040 /* PricingPlan.swift */; };
+        110000012C10000100000043 /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000042 /* SubscriptionService.swift */; };
+        110000012C10000100000045 /* PricingScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000044 /* PricingScreen.swift */; };
+        110000012C10000100000047 /* DonsNotesIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000046 /* DonsNotesIntents.swift */; };
+        110000012C10000100000049 /* DonsNotesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000048 /* DonsNotesWidget.swift */; };
+        110000012C10000100000051 /* MeetingCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000050 /* MeetingCacheService.swift */; };
+        110000012C1000010000001D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000001E /* Assets.xcassets */; };
+/* END PBXBuildFile */
+
+/* BEGIN PBXFileReference */
+        110000012C10000100000002 /* DonsNotesApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/DonsNotesApp.swift; sourceTree = "<group>"; };
+        110000012C10000100000004 /* MockAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Mocks/MockAPIService.swift; sourceTree = "<group>"; };
+        110000012C10000100000006 /* Attendee.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Models/Attendee.swift; sourceTree = "<group>"; };
+        110000012C10000100000008 /* Meeting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Models/Meeting.swift; sourceTree = "<group>"; };
+        110000012C1000010000000A /* APIServiceProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/APIServiceProtocol.swift; sourceTree = "<group>"; };
+        110000012C1000010000000C /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/AudioRecorder.swift; sourceTree = "<group>"; };
+        110000012C1000010000000E /* RealAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/RealAPIService.swift; sourceTree = "<group>"; };
+        110000012C10000100000010 /* ContactService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/ContactService.swift; sourceTree = "<group>"; };
+        110000012C10000100000012 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/ProfileService.swift; sourceTree = "<group>"; };
+        110000012C10000100000014 /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RecordingView.swift; sourceTree = "<group>"; };
+        110000012C10000100000016 /* MeetingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MeetingListView.swift; sourceTree = "<group>"; };
+        110000012C10000100000018 /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MeetingDetailView.swift; sourceTree = "<group>"; };
+        110000012C1000010000001A /* ContactPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ContactPickerView.swift; sourceTree = "<group>"; };
+        110000012C1000010000001C /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/ProfileView.swift; sourceTree = "<group>"; };
+        110000012C10000100000030 /* SpeechRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/SpeechRecognizerService.swift; sourceTree = "<group>"; };
+        110000012C10000100000040 /* PricingPlan.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Models/PricingPlan.swift; sourceTree = "<group>"; };
+        110000012C10000100000042 /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/SubscriptionService.swift; sourceTree = "<group>"; };
+        110000012C10000100000044 /* PricingScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PricingScreen.swift; sourceTree = "<group>"; };
+        110000012C10000100000046 /* DonsNotesIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/DonsNotesIntents.swift; sourceTree = "<group>"; };
+        110000012C10000100000048 /* DonsNotesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Views/DonsNotesWidget.swift; sourceTree = "<group>"; };
+        110000012C10000100000050 /* MeetingCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/MeetingCacheService.swift; sourceTree = "<group>"; };
+        110000012C1000010000001E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
+        110000012C1000010000001F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        110000012C10000100000020 /* DonsNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DonsNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* END PBXFileReference */
+
+/* BEGIN PBXFrameworksBuildPhase */
+        110000012C10000100000021 /* Frameworks */ = {
+            isa = PBXFrameworksBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* END PBXFrameworksBuildPhase */
+
+/* BEGIN PBXGroup */
+        110000012C10000100000022 = {
+            isa = PBXGroup;
+            children = (
+                110000012C10000100000023 /* DonsNotes */,
+                110000012C10000100000024 /* Products */,
+            );
+            sourceTree = "<group>";
+        };
+        110000012C10000100000023 /* DonsNotes */ = {
+            isa = PBXGroup;
+            children = (
+                110000012C10000100000002 /* DonsNotesApp.swift */,
+                110000012C10000100000004 /* MockAPIService.swift */,
+                110000012C10000100000006 /* Attendee.swift */,
+                110000012C10000100000008 /* Meeting.swift */,
+                110000012C1000010000000A /* APIServiceProtocol.swift */,
+                110000012C1000010000000C /* AudioRecorder.swift */,
+                110000012C1000010000000E /* RealAPIService.swift */,
+                110000012C10000100000010 /* ContactService.swift */,
+                110000012C10000100000012 /* ProfileService.swift */,
+                110000012C10000100000030 /* SpeechRecognizerService.swift */,
+                110000012C10000100000040 /* PricingPlan.swift */,
+                110000012C10000100000042 /* SubscriptionService.swift */,
+                110000012C10000100000044 /* PricingScreen.swift */,
+
+                110000012C10000100000048 /* DonsNotesWidget.swift */,
+                110000012C10000100000050 /* MeetingCacheService.swift */,
+                110000012C10000100000014 /* RecordingView.swift */,
+
+                110000012C10000100000018 /* MeetingDetailView.swift */,
+                110000012C1000010000001A /* ContactPickerView.swift */,
+                110000012C1000010000001C /* ProfileView.swift */,
+                110000012C1000010000001E /* Assets.xcassets */,
+                110000012C1000010000001F /* Info.plist */,
+            );
+            path = DonsNotes;
+            sourceTree = "<group>";
+        };
+        110000012C10000100000024 /* Products */ = {
+            isa = PBXGroup;
+            children = (
+                110000012C10000100000020 /* DonsNotes.app */,
+            );
+            name = Products;
+            sourceTree = "<group>";
+        };
+/* END PBXGroup */
+
+/* BEGIN PBXNativeTarget */
+        110000012C10000100000025 /* DonsNotes */ = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = 110000012C10000100000026 /* Build configuration list for PBXNativeTarget "DonsNotes" */;
+            buildPhases = (
+                110000012C10000100000027 /* Sources */,
+                110000012C10000100000021 /* Frameworks */,
+                110000012C10000100000028 /* Resources */,
+            );
+            buildRules = (
+            );
+            dependencies = (
+            );
+            name = DonsNotes;
+            productName = DonsNotes;
+            productReference = 110000012C10000100000020 /* DonsNotes.app */;
+            productType = "com.apple.product-type.application";
+        };
+/* END PBXNativeTarget */
+
+/* BEGIN PBXProject */
+        110000012C10000100000029 /* Project object */ = {
+            isa = PBXProject;
+            attributes = {
+                LastSwiftUpdateCheck = 1500;
+                LastUpgradeCheck = 1500;
+                TargetAttributes = {
+                    110000012C10000100000025 = {
+                        CreatedOnToolsVersion = 15.0;
+                    };
+                };
+            };
+            buildConfigurationList = 110000012C1000010000002A /* Build configuration list for PBXProject "DonsNotes" */;
+            compatibilityVersion = "Xcode 14.0";
+            developmentRegion = en;
+            hasScannedForEncodings = 0;
+            knownRegions = (
+                en,
+                Base,
+            );
+            mainGroup = 110000012C10000100000022;
+            productRefGroup = 110000012C10000100000024 /* Products */;
+            projectDirPath = "";
+            projectRoot = "";
+            targets = (
+                110000012C10000100000025 /* DonsNotes */,
+            );
+        };
+/* END PBXProject */
+
+/* BEGIN PBXResourcesBuildPhase */
+        110000012C10000100000028 /* Resources */ = {
+            isa = PBXResourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+                110000012C1000010000001D /* Assets.xcassets in Resources */,
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* END PBXResourcesBuildPhase */
+
+/* BEGIN PBXSourcesBuildPhase */
+        110000012C10000100000027 /* Sources */ = {
+            isa = PBXSourcesBuildPhase;
+            buildActionMask = 2147483647;
+            files = (
+                110000012C10000100000001 /* DonsNotesApp.swift in Sources */,
+                110000012C10000100000003 /* MockAPIService.swift in Sources */,
+                110000012C10000100000005 /* Attendee.swift in Sources */,
+                110000012C10000100000007 /* Meeting.swift in Sources */,
+                110000012C10000100000009 /* APIServiceProtocol.swift in Sources */,
+                110000012C1000010000000B /* AudioRecorder.swift in Sources */,
+                110000012C1000010000000D /* RealAPIService.swift in Sources */,
+                110000012C1000010000000F /* ContactService.swift in Sources */,
+                110000012C10000100000011 /* ProfileService.swift in Sources */,
+                110000012C10000100000013 /* RecordingView.swift in Sources */,
+                110000012C10000100000015 /* MeetingListView.swift in Sources */,
+                110000012C10000100000017 /* MeetingDetailView.swift in Sources */,
+                110000012C10000100000019 /* ContactPickerView.swift in Sources */,
+                110000012C1000010000001B /* ProfileView.swift in Sources */,
+                110000012C10000100000031 /* SpeechRecognizerService.swift in Sources */,
+                110000012C10000100000041 /* PricingPlan.swift in Sources */,
+                110000012C10000100000043 /* SubscriptionService.swift in Sources */,
+                110000012C10000100000045 /* PlansView.swift in Sources */,
+                110000012C10000100000047 /* DonsNotesIntents.swift in Sources */,
+                110000012C10000100000049 /* DonsNotesWidget.swift in Sources */,
+                110000012C10000100000051 /* MeetingCacheService.swift in Sources */,
+            );
+            runOnlyForDeploymentPostprocessing = 0;
+        };
+/* END PBXSourcesBuildPhase */
+
+/* BEGIN XCBuildConfiguration */
+        110000012C1000010000002B /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+                CLANG_ANALYZER_NONNULL = YES;
+                CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                CLANG_ENABLE_MODULES = YES;
+                CLANG_ENABLE_OBJC_ARC = YES;
+                CLANG_ENABLE_OBJC_WEAK = YES;
+                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+                CLANG_WARN_BOOL_CONVERSION = YES;
+                CLANG_WARN_COMMA = YES;
+                CLANG_WARN_CONSTANT_CONVERSION = YES;
+                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+                CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+                CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+                CLANG_WARN_EMPTY_BODY = YES;
+                CLANG_WARN_ENUM_CONVERSION = YES;
+                CLANG_WARN_INFINITE_RECURSION = YES;
+                CLANG_WARN_INT_CONVERSION = YES;
+                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+                CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+                CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+                CLANG_WARN_STRICT_PROTOTYPES = YES;
+                CLANG_WARN_SUSPICIOUS_MOVE = YES;
+                CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+                CLANG_WARN_UNREACHABLE_CODE = YES;
+                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+                COPY_PHASE_STRIP = NO;
+                DEBUG_INFORMATION_FORMAT = dwarf;
+                ENABLE_STRICT_OBJC_MSGSEND = YES;
+                ENABLE_TESTABILITY = YES;
+                ENABLE_USER_SCRIPT_SANDBOXING = YES;
+                GCC_C_LANGUAGE_STANDARD = gnu17;
+                GCC_DYNAMIC_NO_PIC = NO;
+                GCC_NO_COMMON_BLOCKS = YES;
+                GCC_OPTIMIZATION_LEVEL = 0;
+                GCC_PREPROCESSOR_DEFINITIONS = (
+                    "DEBUG=1",
+                    "$(inherited)",
+                );
+                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+                GCC_WARN_UNDECLARED_SELECTOR = YES;
+                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+                GCC_WARN_UNUSED_FUNCTION = YES;
+                GCC_WARN_UNUSED_VARIABLE = YES;
+                IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+                MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+                MTL_FAST_MATH = YES;
+                ONLY_ACTIVE_ARCH = YES;
+                SDKROOT = iphoneos;
+                SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+            };
+            name = Debug;
+        };
+        110000012C1000010000002C /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ALWAYS_SEARCH_USER_PATHS = NO;
+                ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+                CLANG_ANALYZER_NONNULL = YES;
+                CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+                CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+                CLANG_ENABLE_MODULES = YES;
+                CLANG_ENABLE_OBJC_ARC = YES;
+                CLANG_ENABLE_OBJC_WEAK = YES;
+                CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+                CLANG_WARN_BOOL_CONVERSION = YES;
+                CLANG_WARN_COMMA = YES;
+                CLANG_WARN_CONSTANT_CONVERSION = YES;
+                CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+                CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+                CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+                CLANG_WARN_EMPTY_BODY = YES;
+                CLANG_WARN_ENUM_CONVERSION = YES;
+                CLANG_WARN_INFINITE_RECURSION = YES;
+                CLANG_WARN_INT_CONVERSION = YES;
+                CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+                CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+                CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+                CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+                CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+                CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+                CLANG_WARN_STRICT_PROTOTYPES = YES;
+                CLANG_WARN_SUSPICIOUS_MOVE = YES;
+                CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+                CLANG_WARN_UNREACHABLE_CODE = YES;
+                CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+                COPY_PHASE_STRIP = NO;
+                DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+                ENABLE_NS_ASSERTIONS = NO;
+                ENABLE_STRICT_OBJC_MSGSEND = YES;
+                ENABLE_USER_SCRIPT_SANDBOXING = YES;
+                GCC_C_LANGUAGE_STANDARD = gnu17;
+                GCC_NO_COMMON_BLOCKS = YES;
+                GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+                GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+                GCC_WARN_UNDECLARED_SELECTOR = YES;
+                GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+                GCC_WARN_UNUSED_FUNCTION = YES;
+                GCC_WARN_UNUSED_VARIABLE = YES;
+                IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+                MTL_ENABLE_DEBUG_INFO = NO;
+                MTL_FAST_MATH = YES;
+                SDKROOT = iphoneos;
+                SWIFT_COMPILATION_MODE = wholemodule;
+                VALIDATE_PRODUCT = YES;
+            };
+            name = Release;
+        };
+        110000012C1000010000002D /* Debug */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                BUNDLE_LOADER = "$(TEST_HOST)";
+                CODE_SIGN_STYLE = Automatic;
+                CURRENT_PROJECT_VERSION = 1;
+                GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_FILE = DonsNotes/Info.plist;
+                INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+                INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+                LD_RUNPATH_SEARCH_PATHS = (
+                    "$(inherited)",
+                    "@executable_path/Frameworks",
+                );
+                MARKETING_VERSION = 1.0;
+                PRODUCT_BUNDLE_IDENTIFIER = com.donsnotes.app;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SWIFT_EMIT_LOC_STRINGS = YES;
+                SWIFT_VERSION = 5.0;
+                TARGETED_DEVICE_FAMILY = "1,2";
+            };
+            name = Debug;
+        };
+        110000012C1000010000002E /* Release */ = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                BUNDLE_LOADER = "$(TEST_HOST)";
+                CODE_SIGN_STYLE = Automatic;
+                CURRENT_PROJECT_VERSION = 1;
+                GENERATE_INFOPLIST_FILE = YES;
+                INFOPLIST_FILE = DonsNotes/Info.plist;
+                INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+                INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+                LD_RUNPATH_SEARCH_PATHS = (
+                    "$(inherited)",
+                    "@executable_path/Frameworks",
+                );
+                MARKETING_VERSION = 1.0;
+                PRODUCT_BUNDLE_IDENTIFIER = com.donsnotes.app;
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                SWIFT_EMIT_LOC_STRINGS = YES;
+                SWIFT_VERSION = 5.0;
+                TARGETED_DEVICE_FAMILY = "1,2";
+            };
+            name = Release;
+        };
+/* END XCBuildConfiguration */
+
+/* BEGIN XCConfigurationList */
+        110000012C10000100000026 /* Build configuration list for PBXNativeTarget "DonsNotes" */ = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+                110000012C1000010000002D /* Debug */,
+                110000012C1000010000002E /* Release */,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+        110000012C1000010000002A /* Build configuration list for PBXProject "DonsNotes" */ = {
+            isa = XCConfigurationList;
+            buildConfigurations = (
+                110000012C1000010000002B /* Debug */,
+                110000012C1000010000002C /* Release */,
+            );
+            defaultConfigurationIsVisible = 0;
+            defaultConfigurationName = Release;
+        };
+/* END XCConfigurationList */
+    };
+    rootObject = 110000012C10000100000029 /* Project object */;
+}
