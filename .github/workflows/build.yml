@@ -1,4 +1,4 @@
-name: Build & Package Don's Notes .ipa
+name: Package Don's Notes
 
 on:
   push:
@@ -6,55 +6,31 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: macos-latest
+  package:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build app
+      - name: Package Xcode project
         run: |
           cd donsnotes-ios/XcodeProject
-          xcodebuild -project DonsNotes.xcodeproj \
-            -scheme DonsNotes \
-            -sdk iphoneos \
-            -configuration Release \
-            -derivedDataPath ../build \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            -allowProvisioningUpdates
-        continue-on-error: true
+          zip -r ../../DonsNotes-Xcode.zip DonsNotes.xcodeproj DonsNotes/
+          cd ../DonsNotes
+          zip -r ../../DonsNotes-Sources.zip Sources/ Info.plist Resources/
 
-      - name: Create .ipa
-        run: |
-          cd donsnotes-ios/XcodeProject
-          mkdir -p Payload
-          cp -r ../build/Build/Products/Release-iphoneos/DonsNotes.app Payload/ 2>/dev/null || \
-          cp -r ../build/Release-iphoneos/DonsNotes.app Payload/ 2>/dev/null || \
-          echo "NO_APP=1" >> $GITHUB_ENV
-          cd ../..
-          if [ "$NO_APP" != "1" ]; then
-            cd donsnotes-ios/XcodeProject && zip -r ../../DonsNotes.ipa Payload
-            echo "IPA_CREATED=1" >> $GITHUB_ENV
-          fi
-
-      - name: Upload .ipa
-        if: env.IPA_CREATED == '1'
+      - name: Upload Xcode project
         uses: actions/upload-artifact@v4
         with:
           name: DonsNotes-iPhone
-          path: DonsNotes.ipa
-          retention-days: 7
+          path: |
+            DonsNotes-Xcode.zip
+            DonsNotes-Sources.zip
 
-      - name: Package Xcode project (fallback)
-        if: env.IPA_CREATED != '1'
-        run: |
-          cd donsnotes-ios/XcodeProject
-          zip -r ../../DonsNotes-XcodeProject.zip DonsNotes.xcodeproj DonsNotes/
+      - name: Package Android project
+        run: zip -r DonsNotes-Android.zip donsnotes-android/
 
-      - name: Upload Xcode project (fallback)
-        if: env.IPA_CREATED != '1'
+      - name: Upload Android
         uses: actions/upload-artifact@v4
         with:
-          name: DonsNotes-XcodeProject
-          path: DonsNotes-XcodeProject.zip
-          retention-days: 7
+          name: DonsNotes-Android
+          path: DonsNotes-Android.zip
