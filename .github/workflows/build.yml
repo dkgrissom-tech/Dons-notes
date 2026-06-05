@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build app into .ipa
+      - name: Build app
         run: |
           cd donsnotes-ios/XcodeProject
           xcodebuild -project DonsNotes.xcodeproj \
@@ -21,33 +21,40 @@ jobs:
             -derivedDataPath ../build \
             CODE_SIGNING_ALLOWED=NO \
             DEVELOPMENT_TEAM="" \
-            -allowProvisioningUpdates \
-            || echo "BUILD_FAILED=true" >> $GITHUB_ENV
+            -allowProvisioningUpdates
+        continue-on-error: true
 
-      - name: Create .ipa (if build succeeded)
-        if: env.BUILD_FAILED != 'true'
+      - name: Create .ipa
         run: |
           cd donsnotes-ios/XcodeProject
           mkdir -p Payload
-          cp -r ../build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
-          zip -r ../../DonsNotes.ipa Payload
+          cp -r ../build/Build/Products/Release-iphoneos/DonsNotes.app Payload/ 2>/dev/null || \
+          cp -r ../build/Release-iphoneos/DonsNotes.app Payload/ 2>/dev/null || \
+          echo "NO_APP=1" >> $GITHUB_ENV
+          cd ../..
+          if [ "$NO_APP" != "1" ]; then
+            cd donsnotes-ios/XcodeProject && zip -r ../../DonsNotes.ipa Payload
+            echo "IPA_CREATED=1" >> $GITHUB_ENV
+          fi
 
       - name: Upload .ipa
-        if: env.BUILD_FAILED != 'true'
+        if: env.IPA_CREATED == '1'
         uses: actions/upload-artifact@v4
         with:
           name: DonsNotes-iPhone
           path: DonsNotes.ipa
+          retention-days: 7
 
-      - name: Package source (fallback if build fails)
-        if: env.BUILD_FAILED == 'true'
+      - name: Package Xcode project (fallback)
+        if: env.IPA_CREATED != '1'
         run: |
           cd donsnotes-ios/XcodeProject
           zip -r ../../DonsNotes-XcodeProject.zip DonsNotes.xcodeproj DonsNotes/
 
       - name: Upload Xcode project (fallback)
-        if: env.BUILD_FAILED == 'true'
+        if: env.IPA_CREATED != '1'
         uses: actions/upload-artifact@v4
         with:
           name: DonsNotes-XcodeProject
           path: DonsNotes-XcodeProject.zip
+          retention-days: 7
