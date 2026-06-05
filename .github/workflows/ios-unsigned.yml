@@ -1,0 +1,50 @@
+name: iOS · Unsigned build (AltStore/Sideloadly)
+
+# Keeps the old workflow alive as a fallback for sideloading.
+# Use this when you just want a quick .ipa to install via AltStore or Sideloadly
+# without going through TestFlight or paying for the Apple Developer Program.
+#
+# The signed/TestFlight pipeline lives in ios-testflight.yml.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - 'donsnotes-ios/**'
+      - '.github/workflows/ios-unsigned.yml'
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+
+      - name: Build unsigned .app
+        run: |
+          cd donsnotes-ios/MinimalProject
+          xcodebuild \
+            -project DonsNotes.xcodeproj \
+            -scheme DonsNotes \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      - name: Package as .ipa
+        run: |
+          cd donsnotes-ios/MinimalProject
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
+          zip -r ../../DonsNotes-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DonsNotes-unsigned-ipa
+          path: DonsNotes-unsigned.ipa
+          retention-days: 14

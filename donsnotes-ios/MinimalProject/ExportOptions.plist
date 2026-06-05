@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Store distribution (for TestFlight + App Store releases) -->
+    <key>method</key>
+    <string>app-store</string>
+
+    <key>teamID</key>
+    <string>$(APPLE_TEAM_ID)</string>
+
+    <!-- Use the App Store Connect API key set in CI to sign & upload -->
+    <key>signingStyle</key>
+    <string>manual</string>
+
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.donsnotes.app</key>
+        <string>match AppStore com.donsnotes.app</string>
+    </dict>
+
+    <!-- Upload symbols for crash reporting in App Store Connect -->
+    <key>uploadSymbols</key>
+    <true/>
+
+    <!-- Don't upload bitcode (deprecated by Apple in Xcode 14+) -->
+    <key>uploadBitcode</key>
+    <false/>
+
+    <!-- Strip Swift symbols to reduce binary size -->
+    <key>stripSwiftSymbols</key>
+    <true/>
+
+    <!-- Skip the prompt asking what to include in the bundle -->
+    <key>compileBitcode</key>
+    <false/>
+
+    <!-- Destination: export the .ipa to a local path (CI will pick it up) -->
+    <key>destination</key>
+    <string>export</string>
+</dict>
+</plist>

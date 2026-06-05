@@ -1,0 +1,102 @@
+# Fastfile — Don's Notes iOS
+#
+# Lanes:
+#   - beta:   Build a signed .ipa and upload to TestFlight
+#   - release: Build a signed .ipa and submit to App Store review
+#   - certificates: Sync certs/profiles from the match git repo (run once locally to seed)
+#
+# All sensitive values come from environment variables set as GitHub Secrets.
+# See SECRETS.md in the repo root for the full list.
+
+default_platform(:ios)
+
+XCODE_PROJECT = "MinimalProject/DonsNotes.xcodeproj"
+SCHEME        = "DonsNotes"
+BUNDLE_ID     = "com.donsnotes.app"
+
+platform :ios do
+  before_all do
+    # Auth with App Store Connect API key (no Apple ID password required).
+    # CI sets these from secrets; locally you can export them or put in .env.
+    app_store_connect_api_key(
+      key_id:      ENV["APP_STORE_CONNECT_KEY_ID"],
+      issuer_id:   ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_content: ENV["APP_STORE_CONNECT_KEY_CONTENT"], # base64-encoded .p8 contents
+      is_key_content_base64: true,
+      in_house:    false
+    )
+  end
+
+  desc "Sync code-signing certs & profiles from the private match repo"
+  lane :certificates do
+    match(
+      type: "appstore",
+      app_identifier: BUNDLE_ID,
+      readonly: is_ci  # CI never creates new certs, only consumes them
+    )
+  end
+
+  desc "Build a signed .ipa and upload to TestFlight"
+  lane :beta do
+    # Bump the build number to the App Store Connect latest + 1 so every upload is unique
+    increment_build_number(
+      xcodeproj: XCODE_PROJECT,
+      build_number: latest_testflight_build_number(
+        app_identifier: BUNDLE_ID,
+        initial_build_number: 0
+      ) + 1
+    )
+
+    # Fetch certs/profiles into the CI keychain
+    sync_code_signing(
+      type: "appstore",
+      app_identifier: BUNDLE_ID,
+      readonly: true
+    )
+
+    # Build & sign
+    build_app(
+      project: XCODE_PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      export_options: {
+        provisioningProfiles: {
+          BUNDLE_ID => "match AppStore #{BUNDLE_ID}"
+        }
+      },
+      clean: true,
+      output_directory: "build",
+      output_name: "DonsNotes.ipa"
+    )
+
+    # Upload to TestFlight (no review submission, just makes it available to internal testers)
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: ENV["TESTFLIGHT_CHANGELOG"] || "Automated build from CI"
+    )
+  end
+
+  desc "Build a signed .ipa and submit to App Store review"
+  lane :release do
+    sync_code_signing(type: "appstore", app_identifier: BUNDLE_ID, readonly: true)
+
+    build_app(
+      project: XCODE_PROJECT,
+      scheme: SCHEME,
+      configuration: "Release",
+      export_method: "app-store",
+      clean: true,
+      output_directory: "build",
+      output_name: "DonsNotes.ipa"
+    )
+
+    upload_to_app_store(
+      skip_metadata: true,
+      skip_screenshots: true,
+      submit_for_review: false,  # Set to true when you're ready to push to review
+      automatic_release: false,
+      precheck_include_in_app_purchases: false
+    )
+  end
+end
