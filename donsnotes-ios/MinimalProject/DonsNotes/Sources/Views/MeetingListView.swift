@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let startRecording = Notification.Name("startRecording")
+}
+
 struct MeetingListView<T: APIServiceProtocol>: View {
     @ObservedObject var apiService: T
     @State private var meetings: [Meeting] = []
