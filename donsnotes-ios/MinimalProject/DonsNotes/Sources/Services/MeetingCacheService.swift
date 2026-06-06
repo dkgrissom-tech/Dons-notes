@@ -17,7 +17,7 @@ class MeetingCacheService {
     func loadMeetings() -> [Meeting] {
         guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return [] }
         do {
-            return try JSONDecoder().decode([Meeting.self], from: data)
+            return try JSONDecoder().decode([Meeting].self, from: data)
         } catch {
             print("Failed to load cached meetings: \(error)")
             return []
