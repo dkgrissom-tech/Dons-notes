@@ -1,34 +1,65 @@
-name: Build .ipa
-on: [push, workflow_dispatch]
+name: Deploy to TestFlight
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
 jobs:
-  build:
+  deploy:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build DonsNotes
-        run: |
-          cd donsnotes-ios/MinimalProject
-          xcodebuild \
-            -project DonsNotes.xcodeproj \
-            -scheme DonsNotes \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-
-      - name: Package .ipa
-        run: |
-          cd donsnotes-ios/MinimalProject
-          mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
-          zip -r ../../DonsNotes.ipa Payload
-
-      - uses: actions/upload-artifact@v4
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
         with:
-          name: DonsNotes-iPhone
-          path: DonsNotes.ipa
+          ruby-version: '3.2'
+          bundler-cache: true
 
+      - name: Install Fastlane
+        run: gem install fastlane
+
+      - name: Set up App Store Connect API Key
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+
+      - name: Install certificates and profiles via Fastlane
+        working-directory: donsnotes-ios/MinimalProject
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
+        run: |
+          fastlane run app_store_connect_api_key \
+            key_id:"$APP_STORE_CONNECT_API_KEY_ID" \
+            issuer_id:"$APP_STORE_CONNECT_ISSUER_ID" \
+            key_filepath:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          
+          fastlane run sync_code_signing \
+            type:"appstore" \
+            app_identifier:"$APP_BUNDLE_ID" \
+            team_id:"$APPLE_TEAM_ID" \
+            readonly:false \
+            api_key_path:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+
+      - name: Build and upload to TestFlight
+        working-directory: donsnotes-ios/MinimalProject
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
+        run: |
+          fastlane run build_app \
+            scheme:"DonsNotes" \
+            project:"DonsNotes.xcodeproj" \
+            configuration:"Release" \
+            export_method:"app-store" \
+            output_directory:"./build"
+          
+          fastlane run upload_to_testflight \
+            ipa:"./build/DonsNotes.ipa" \
+            api_key_path:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
+            skip_waiting_for_build_processing:true
