@@ -10,30 +10,6 @@ platform :ios do
       in_house: false
     )
 
-    keychain_name = "build.keychain"
-    keychain_password = "build_ci_2026"
-
-    # Create a CI keychain to avoid UI password prompts
-    create_keychain(
-      name: keychain_name,
-      password: keychain_password,
-      default_keychain: true,
-      unlock: true,
-      timeout: 3600,
-      lock_when_sleeps: false,
-      add_to_search_list: true
-    )
-
-    match(
-      type: "appstore",
-      app_identifier: "com.donsnotes.app",
-      git_basic_authorization: Base64.strict_encode64("x-access-token:#{ENV["GITHUB_TOKEN"]}"),
-      readonly: true,
-      api_key: api_key,
-      keychain_name: keychain_name,
-      keychain_password: keychain_password
-    )
-
     build_app(
       scheme: "DonsNotes",
       project: "DonsNotes.xcodeproj",
@@ -41,7 +17,7 @@ platform :ios do
       export_method: "app-store",
       output_directory: "./build",
       output_name: "DonsNotes.ipa",
-      xcargs: "CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='match AppStore com.donsnotes.app' DEVELOPMENT_TEAM=#{ENV["APPLE_TEAM_ID"]} OTHER_CODE_SIGN_FLAGS='--keychain #{keychain_name}'",
+      xcargs: "CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='match AppStore com.donsnotes.app' DEVELOPMENT_TEAM=#{ENV["APPLE_TEAM_ID"]} CODE_SIGN_IDENTITY='Apple Distribution'",
       export_options: {
         method: "app-store",
         provisioningProfiles: {
@@ -56,7 +32,5 @@ platform :ios do
       api_key: api_key,
       skip_waiting_for_build_processing: true
     )
-
-    delete_keychain(name: keychain_name)
   end
 end

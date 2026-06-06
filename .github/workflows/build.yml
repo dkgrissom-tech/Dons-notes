@@ -26,14 +26,42 @@ jobs:
           printf "%s" "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
 
+      - name: Import distribution certificate and provisioning profile
+        run: |
+          # Create a temporary keychain
+          security create-keychain -p "ci_keychain_pass" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "ci_keychain_pass" build.keychain
+          security set-keychain-settings -t 3600 -l build.keychain
+
+          # Import the distribution certificate
+          echo "${{ secrets.DISTRIBUTION_CERTIFICATE_P12 }}" | base64 --decode > /tmp/distribution.p12
+          security import /tmp/distribution.p12 \
+            -k build.keychain \
+            -P "${{ secrets.DISTRIBUTION_CERTIFICATE_PASSWORD }}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/xcodebuild \
+            -A
+          
+          # Allow codesign access without UI prompt
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "ci_keychain_pass" \
+            build.keychain
+
+          # Verify the certificate is available
+          security find-identity -v -p codesigning build.keychain
+
+          # Install provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision
+
       - name: Run Fastlane beta lane
         working-directory: donsnotes-ios/MinimalProject
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-          MATCH_KEYCHAIN_NAME: build.keychain
-          MATCH_KEYCHAIN_PASSWORD: build_ci_2026
         run: bundle exec fastlane beta
