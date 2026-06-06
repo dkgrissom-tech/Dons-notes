@@ -1,9 +1,9 @@
 import Foundation
 
-class MockAPIService: APIServiceProtocol {
-    @Published var meetings: [Meeting] = [
-        Meeting(id: UUID(), status: .sent, audioUrl: nil, transcript: "This is a mock transcript of a very productive meeting.", summary: "Mock Summary: We discussed building a great app and decided to use SwiftUI.", attendees: [Attendee(email: "don@example.com", name: "Don")], createdAt: Date().addingTimeInterval(-86400)),
-        Meeting(id: UUID(), status: .completed, audioUrl: nil, transcript: "Another transcript here.", summary: "Discussed the revenue model: Freemium, Lifetime, and Monthly.", attendees: [Attendee(email: "jane@example.com", name: "Jane")], createdAt: Date().addingTimeInterval(-3600))
+class MockAPIService: ObservableObject, APIServiceProtocol {
+    var meetings: [Meeting] = [
+        Meeting(id: UUID(), status: .sent, audioUrl: nil, transcript: "This is a mock transcript of a very productive meeting.", summary: "Mock Summary: We discussed building a great app and decided to use SwiftUI.", attendees: [Attendee(email: "don@example.com", name: "Don")], organizerName: nil, createdAt: Date().addingTimeInterval(-86400)),
+        Meeting(id: UUID(), status: .completed, audioUrl: nil, transcript: "Another transcript here.", summary: "Discussed the revenue model: Freemium, Lifetime, and Monthly.", attendees: [Attendee(email: "jane@example.com", name: "Jane")], organizerName: nil, createdAt: Date().addingTimeInterval(-3600))
     ]
     
     @Published var contacts: [Attendee] = [
@@ -29,19 +29,19 @@ class MockAPIService: APIServiceProtocol {
         if let meeting = meetings.first(where: { $0.id == id }) {
             // Simulate status progression for demonstration if it was pending
             if meeting.status == .pending {
-                let updated = Meeting(id: id, status: .transcribing, audioUrl: nil, transcript: nil, summary: nil, attendees: meeting.attendees, createdAt: meeting.createdAt)
+                let updated = Meeting(id: id, status: .transcribing, audioUrl: nil, transcript: nil, summary: nil, attendees: meeting.attendees, organizerName: meeting.organizerName, createdAt: meeting.createdAt)
                 if let index = meetings.firstIndex(where: { $0.id == id }) {
                     meetings[index] = updated
                 }
                 return updated
             } else if meeting.status == .transcribing {
-                let updated = Meeting(id: id, status: .summarizing, audioUrl: nil, transcript: "Mock transcript being generated...", summary: nil, attendees: meeting.attendees, createdAt: meeting.createdAt)
+                let updated = Meeting(id: id, status: .summarizing, audioUrl: nil, transcript: "Mock transcript being generated...", summary: nil, attendees: meeting.attendees, organizerName: meeting.organizerName, createdAt: meeting.createdAt)
                 if let index = meetings.firstIndex(where: { $0.id == id }) {
                     meetings[index] = updated
                 }
                 return updated
             } else if meeting.status == .summarizing {
-                let updated = Meeting(id: id, status: .completed, audioUrl: nil, transcript: "Full mock transcript.", summary: "Final mock summary generated.", attendees: meeting.attendees, createdAt: meeting.createdAt)
+                let updated = Meeting(id: id, status: .completed, audioUrl: nil, transcript: "Full mock transcript.", summary: "Final mock summary generated.", attendees: meeting.attendees, organizerName: meeting.organizerName, createdAt: meeting.createdAt)
                 if let index = meetings.firstIndex(where: { $0.id == id }) {
                     meetings[index] = updated
                 }
@@ -56,7 +56,7 @@ class MockAPIService: APIServiceProtocol {
         try await Task.sleep(nanoseconds: 1 * 1_000_000_000)
         if let index = meetings.firstIndex(where: { $0.id == id }) {
             let meeting = meetings[index]
-            meetings[index] = Meeting(id: id, status: .sent, audioUrl: meeting.audioUrl, transcript: meeting.transcript, summary: meeting.summary, attendees: meeting.attendees, createdAt: meeting.createdAt)
+            meetings[index] = Meeting(id: id, status: .sent, audioUrl: meeting.audioUrl, transcript: meeting.transcript, summary: meeting.summary, attendees: meeting.attendees, organizerName: meeting.organizerName, createdAt: meeting.createdAt)
         }
     }
     
