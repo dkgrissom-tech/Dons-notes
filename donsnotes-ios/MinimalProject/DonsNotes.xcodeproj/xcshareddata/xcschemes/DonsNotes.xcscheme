@@ -29,7 +29,7 @@
       shouldUseLaunchSchemeArgsEnv = "YES"
       shouldAdaptBuildSettingsRunContext = "YES">
       <Testables>
-      </TestAction>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
@@ -75,5 +75,15 @@
    <ArchivingAction
       buildConfiguration = "Release"
       revealArchiveInOrganizer = "YES">
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "110000012C100001000000C9"
+            BuildableName = "DonsNotes.app"
+            BlueprintName = "DonsNotes"
+            ReferencedContainer = "container:DonsNotes.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
    </ArchivingAction>
 </Scheme>
