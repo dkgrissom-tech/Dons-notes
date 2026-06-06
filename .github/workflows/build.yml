@@ -13,18 +13,21 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: '3.2'
-          bundler-cache: true
+          ruby-version: "3.2"
 
-      - name: Install Fastlane
-        run: gem install fastlane
+      - name: Install Fastlane and dependencies
+        run: |
+          gem install fastlane -v 2.220.0
+          gem install multi_json
+          gem install spaceship
 
       - name: Set up App Store Connect API Key
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
           echo "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
 
-      - name: Install certificates and profiles via Fastlane
+      - name: Build and sign app
         working-directory: donsnotes-ios/MinimalProject
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
@@ -32,34 +35,15 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
         run: |
-          fastlane run app_store_connect_api_key \
-            key_id:"$APP_STORE_CONNECT_API_KEY_ID" \
-            issuer_id:"$APP_STORE_CONNECT_ISSUER_ID" \
-            key_filepath:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          fastlane run app_store_connect_api_key             key_id:"$APP_STORE_CONNECT_API_KEY_ID"             issuer_id:"$APP_STORE_CONNECT_ISSUER_ID"             key_filepath:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"             in_house:false
           
-          fastlane run sync_code_signing \
-            type:"appstore" \
-            app_identifier:"$APP_BUNDLE_ID" \
-            team_id:"$APPLE_TEAM_ID" \
-            readonly:false \
-            api_key_path:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"
+          fastlane run sync_code_signing             type:"appstore"             app_identifier:"$APP_BUNDLE_ID"             team_id:"$APPLE_TEAM_ID"             readonly:false
+          
+          fastlane run build_app             scheme:"DonsNotes"             project:"DonsNotes.xcodeproj"             configuration:"Release"             export_method:"app-store"             output_directory:"./build"
 
-      - name: Build and upload to TestFlight
-        working-directory: donsnotes-ios/MinimalProject
+      - name: Upload to TestFlight
         env:
           APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
         run: |
-          fastlane run build_app \
-            scheme:"DonsNotes" \
-            project:"DonsNotes.xcodeproj" \
-            configuration:"Release" \
-            export_method:"app-store" \
-            output_directory:"./build"
-          
-          fastlane run upload_to_testflight \
-            ipa:"./build/DonsNotes.ipa" \
-            api_key_path:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8" \
-            skip_waiting_for_build_processing:true
+          fastlane run upload_to_testflight             ipa:"donsnotes-ios/MinimalProject/build/DonsNotes.ipa"             api_key_path:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"             skip_waiting_for_build_processing:true
