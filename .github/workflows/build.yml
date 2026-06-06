@@ -34,4 +34,6 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_KEYCHAIN_NAME: build.keychain
+          MATCH_KEYCHAIN_PASSWORD: build_ci_2026
         run: bundle exec fastlane beta

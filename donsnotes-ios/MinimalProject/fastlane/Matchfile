@@ -1,5 +1,5 @@
-git_url("https://github.com/dkgrissom-tech/ios-certificates")
+git_url("https://github.com/dkgrissom-tech/Dons-notes")
+git_branch("certs")
 storage_mode("git")
 type("appstore")
 app_identifier("com.donsnotes.app")
-username("dkgrissom@gmail.com")
