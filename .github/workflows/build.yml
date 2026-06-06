@@ -34,7 +34,7 @@ jobs:
           security unlock-keychain -p "ci_keychain_pass" build.keychain
           security set-keychain-settings -t 3600 -l build.keychain
 
-          # Import the distribution certificate
+          # Import the distribution certificate (includes private key)
           echo "${{ secrets.DISTRIBUTION_CERTIFICATE_P12 }}" | base64 --decode > /tmp/distribution.p12
           security import /tmp/distribution.p12 \
             -k build.keychain \
@@ -43,7 +43,7 @@ jobs:
             -T /usr/bin/xcodebuild \
             -A
           
-          # Allow codesign access without UI prompt
+          # Allow codesign/xcodebuild access without UI prompt
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
             -s \
@@ -51,11 +51,18 @@ jobs:
             build.keychain
 
           # Verify the certificate is available
+          echo "=== Certificates in keychain ==="
           security find-identity -v -p codesigning build.keychain
 
-          # Install provisioning profile
+          # Install provisioning profile in BOTH possible locations
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
           echo "${{ secrets.PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision
+          cp ~/Library/MobileDevice/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision
+          
+          echo "=== Installed profiles ==="
+          ls ~/Library/MobileDevice/Provisioning\ Profiles/
+          ls ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/ 2>/dev/null || echo "Xcode dir not found"
 
       - name: Run Fastlane beta lane
         working-directory: donsnotes-ios/MinimalProject
