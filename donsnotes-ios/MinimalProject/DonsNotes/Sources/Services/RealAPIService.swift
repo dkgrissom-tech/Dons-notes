@@ -52,7 +52,7 @@ class RealAPIService: APIServiceProtocol {
         
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        let meetings = try decoder.decode([Meeting.self], from: data)
+        let meetings: [Meeting] = try decoder.decode([Meeting].self, from: data)
         MeetingCacheService.shared.saveMeetings(meetings)
         return meetings
     }
