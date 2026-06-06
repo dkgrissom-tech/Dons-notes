@@ -10,40 +10,66 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.2"
+      - name: Install Fastlane
+        run: gem install fastlane
 
-      - name: Install Fastlane and dependencies
-        run: |
-          gem install fastlane -v 2.220.0
-          gem install multi_json
-          gem install spaceship
-
-      - name: Set up App Store Connect API Key
+      - name: Set up App Store Connect API Key file
         run: |
           mkdir -p ~/.appstoreconnect/private_keys
-          echo "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          printf "%s" "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
 
-      - name: Build and sign app
-        working-directory: donsnotes-ios/MinimalProject
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
+      - name: Create ExportOptions.plist
         run: |
-          fastlane run app_store_connect_api_key             key_id:"$APP_STORE_CONNECT_API_KEY_ID"             issuer_id:"$APP_STORE_CONNECT_ISSUER_ID"             key_filepath:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"             in_house:false
-          
-          fastlane run sync_code_signing             type:"appstore"             app_identifier:"$APP_BUNDLE_ID"             team_id:"$APPLE_TEAM_ID"             readonly:false
-          
-          fastlane run build_app             scheme:"DonsNotes"             project:"DonsNotes.xcodeproj"             configuration:"Release"             export_method:"app-store"             output_directory:"./build"
+          cat > /tmp/ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>uploadSymbols</key>
+            <true/>
+            <key>compileBitcode</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build archive
+        working-directory: donsnotes-ios/MinimalProject
+        run: |
+          xcodebuild archive \
+            -project DonsNotes.xcodeproj \
+            -scheme DonsNotes \
+            -configuration Release \
+            -archivePath ./build/DonsNotes.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8" \
+            -authenticationKeyID "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}"
+
+      - name: Export .ipa
+        working-directory: donsnotes-ios/MinimalProject
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath ./build/DonsNotes.xcarchive \
+            -exportPath ./build/export \
+            -exportOptionsPlist /tmp/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8" \
+            -authenticationKeyID "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
       - name: Upload to TestFlight
-        env:
-          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        working-directory: donsnotes-ios/MinimalProject
         run: |
-          fastlane run upload_to_testflight             ipa:"donsnotes-ios/MinimalProject/build/DonsNotes.ipa"             api_key_path:"$HOME/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_API_KEY_ID}.p8"             skip_waiting_for_build_processing:true
+          xcrun altool --upload-app \
+            -f ./build/export/DonsNotes.ipa \
+            --type ios \
+            --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
