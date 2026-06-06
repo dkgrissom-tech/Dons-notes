@@ -10,14 +10,29 @@ platform :ios do
       in_house: false
     )
 
+    # Create a temporary keychain so certs can be imported without UI popups
+    keychain_name = "build.keychain"
+    keychain_password = "temporary_ci_password"
+
+    create_keychain(
+      name: keychain_name,
+      password: keychain_password,
+      default_keychain: true,
+      unlock: true,
+      timeout: 3600,
+      lock_when_sleeps: false
+    )
+
     match(
       type: "appstore",
       app_identifier: "com.donsnotes.app",
       git_url: "https://github.com/dkgrissom-tech/Dons-notes",
       git_branch: "certs",
       git_basic_authorization: Base64.strict_encode64("x-access-token:#{ENV["GITHUB_TOKEN"]}"),
-      readonly: false,
-      api_key: api_key
+      readonly: true,
+      api_key: api_key,
+      keychain_name: keychain_name,
+      keychain_password: keychain_password
     )
 
     build_app(
@@ -27,13 +42,22 @@ platform :ios do
       export_method: "app-store",
       output_directory: "./build",
       output_name: "DonsNotes.ipa",
-      xcargs: "-allowProvisioningUpdates",
-      export_xcargs: "-allowProvisioningUpdates"
+      xcargs: "CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER='match AppStore com.donsnotes.app' DEVELOPMENT_TEAM=287R5CASSK",
+      export_options: {
+        method: "app-store",
+        provisioningProfiles: {
+          "com.donsnotes.app" => "match AppStore com.donsnotes.app"
+        },
+        signingStyle: "manual",
+        teamID: "287R5CASSK"
+      }
     )
 
     upload_to_testflight(
       api_key: api_key,
       skip_waiting_for_build_processing: true
     )
+
+    delete_keychain(name: keychain_name)
   end
 end
