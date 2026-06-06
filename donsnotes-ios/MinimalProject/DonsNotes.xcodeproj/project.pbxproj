@@ -263,6 +263,7 @@
                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
                 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
                 CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 287R5CASSK;
                 CURRENT_PROJECT_VERSION = 1;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = DonsNotes/Info.plist;
@@ -285,6 +286,7 @@
                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
                 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
                 CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 287R5CASSK;
                 CURRENT_PROJECT_VERSION = 1;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = DonsNotes/Info.plist;
