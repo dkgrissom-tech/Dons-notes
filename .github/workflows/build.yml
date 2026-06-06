@@ -5,13 +5,30 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: |
+
+      - name: Build DonsNotes
+        run: |
           cd donsnotes-ios/MinimalProject
-          xcodebuild -project DonsNotes.xcodeproj -scheme DonsNotes -sdk iphoneos CODE_SIGNING_ALLOWED=NO
+          xcodebuild \
+            -project DonsNotes.xcodeproj \
+            -scheme DonsNotes \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package .ipa
+        run: |
+          cd donsnotes-ios/MinimalProject
           mkdir -p Payload
           cp -r build/Build/Products/Release-iphoneos/DonsNotes.app Payload/
           zip -r ../../DonsNotes.ipa Payload
+
       - uses: actions/upload-artifact@v4
         with:
           name: DonsNotes-iPhone
           path: DonsNotes.ipa
+
