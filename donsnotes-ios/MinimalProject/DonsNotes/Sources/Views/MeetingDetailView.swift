@@ -353,7 +353,7 @@ struct WaveformBar: View {
                     }
                 }
             }
-            .onChange(of: isPlaying) { playing in
+            .onChange(of: isPlaying, perform: { playing in
                 if playing {
                     withAnimation(Animation.easeInOut(duration: Double.random(in: 0.4...0.8)).repeatForever(autoreverses: true)) {
                         animHeight = baseHeight * CGFloat.random(in: 0.5...1.5)
@@ -363,7 +363,7 @@ struct WaveformBar: View {
                         animHeight = baseHeight
                     }
                 }
-            }
+            })
     }
 }
 

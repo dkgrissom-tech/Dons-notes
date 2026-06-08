@@ -229,7 +229,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .padding(.bottom, 30)
             }
         }
-        .onChange(of: speechService.transcript) { newValue in parseTranscript(newValue) }
+        .onChange(of: speechService.transcript, perform: { newValue in parseTranscript(newValue) })
     }
     
     private var recordingSection: some View {
