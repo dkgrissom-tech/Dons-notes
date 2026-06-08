@@ -62,6 +62,19 @@ struct Meeting: Codable, Identifiable {
         case actionItems = "action_items"
     }
     
+    // Memberwise init for use in tests/mocks and local construction
+    init(id: UUID, status: MeetingStatus, audioUrl: String?, transcript: String?, summary: String?, attendees: [Attendee], organizerName: String?, createdAt: Date, actionItems: [String]? = nil) {
+        self.id = id
+        self.status = status
+        self.audioUrl = audioUrl
+        self.transcript = transcript
+        self.summary = summary
+        self.attendees = attendees
+        self.organizerName = organizerName
+        self.createdAt = createdAt
+        self.actionItems = actionItems
+    }
+    
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -73,5 +86,18 @@ struct Meeting: Codable, Identifiable {
         organizerName = try container.decodeIfPresent(String.self, forKey: .organizerName)
         createdAt = (try? container.decode(Date.self, forKey: .createdAt)) ?? Date()
         actionItems = try container.decodeIfPresent([String].self, forKey: .actionItems)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(audioUrl, forKey: .audioUrl)
+        try container.encodeIfPresent(transcript, forKey: .transcript)
+        try container.encodeIfPresent(summary, forKey: .summary)
+        try container.encode(attendees, forKey: .attendees)
+        try container.encodeIfPresent(organizerName, forKey: .organizerName)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(actionItems, forKey: .actionItems)
     }
 }
