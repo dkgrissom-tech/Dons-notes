@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct RecordingView<T: APIServiceProtocol>: View {
     @StateObject var recorder = AudioRecorder()
@@ -15,249 +16,337 @@ struct RecordingView<T: APIServiceProtocol>: View {
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 20) {
-                // Flow control: Setup vs Recording
-                if !recorder.isRecording && recorder.recordingURL == nil {
-                    // SETUP PHASE: Add Attendees first
-                    setupSection
-                } else {
-                    // RECORDING / UPLOAD PHASE
-                    recordingSection
+            ZStack {
+                DNColors.background.ignoresSafeArea()
+                
+                VStack(spacing: 20) {
+                    if !recorder.isRecording && recorder.recordingURL == nil {
+                        setupSection
+                    } else {
+                        recordingSection
+                    }
                 }
+                .padding()
             }
-            .padding()
             .navigationTitle(recorder.isRecording ? "Recording" : "New Meeting")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(DNColors.textSecondary)
                 }
             }
             .onAppear {
-                Task {
-                    await contactService.syncContacts(from: apiService)
-                }
+                Task { await contactService.syncContacts(from: apiService) }
             }
         }
+        .preferredColorScheme(.dark)
     }
     
     private var setupSection: some View {
-        VStack(spacing: 15) {
-            Text("Attendee Sign-In")
-                .font(.title2)
-                .bold()
-            
-            if !profileService.userName.isEmpty {
-                Text("Organizer: \(profileService.userName)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            if !contactService.savedContacts.isEmpty {
-                VStack(alignment: .leading) {
-                    Text("Quick Add from Contacts")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal)
-                    
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(contactService.savedContacts) { contact in
-                                Button(action: { toggleAttendee(contact) }) {
-                                    VStack {
-                                        Image(systemName: "person.circle.fill")
-                                            .font(.system(size: 30))
-                                        Text(contact.name)
-                                            .font(.caption)
-                                            .lineLimit(1)
-                                    }
-                                    .padding(8)
-                                    .frame(width: 80)
-                                    .background(attendees.contains(where: { $0.email == contact.email }) ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
-                                    .cornerRadius(10)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .stroke(attendees.contains(where: { $0.email == contact.email }) ? Color.blue : Color.clear, lineWidth: 2)
-                                    )
-                                }
-                                .foregroundColor(.primary)
-                            }
-                        }
-                        .padding(.horizontal)
+        ScrollView {
+            VStack(spacing: 20) {
+                // Title
+                VStack(spacing: 6) {
+                    Image(systemName: "waveform.badge.mic")
+                        .font(.system(size: 40))
+                        .foregroundColor(DNColors.accent)
+                    Text("New Meeting")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(DNColors.textPrimary)
+                    if !profileService.userName.isEmpty {
+                        Text("Organizer: \(profileService.userName)")
+                            .font(.system(size: 14))
+                            .foregroundColor(DNColors.textSecondary)
                     }
                 }
-            }
-            
-            VStack(alignment: .leading) {
-                Text("Add New Attendee")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal)
+                .padding(.top, 10)
                 
-                HStack {
-                    TextField("Name", text: $newAttendeeName)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                    TextField("Email", text: $newAttendeeEmail)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .keyboardType(.emailAddress)
-                        .autocapitalization(.none)
-                    
-                    Button(action: addAttendee) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title)
-                    }
-                    
-                    Button(action: toggleListening) {
-                        Image(systemName: speechService.isListening ? "mic.fill" : "mic")
-                            .font(.title)
-                            .foregroundColor(speechService.isListening ? .red : .blue)
-                    }
-                }
-                .padding(.horizontal)
-                
-                if speechService.isListening {
-                    HStack(spacing: 4) {
-                        Text("Listening...")
-                            .font(.caption)
-                            .foregroundColor(.red)
+                // Quick Add Contacts
+                if !contactService.savedContacts.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("QUICK ADD")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(DNColors.textTertiary)
+                            .tracking(1.2)
+                            .padding(.horizontal)
                         
-                        ForEach(0..<5) { index in
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.red)
-                                .frame(width: 3, height: CGFloat.random(in: 5...15))
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 10) {
+                                ForEach(contactService.savedContacts) { contact in
+                                    Button(action: { toggleAttendee(contact) }) {
+                                        let isSelected = attendees.contains(where: { $0.email == contact.email })
+                                        VStack(spacing: 6) {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(isSelected ? DNColors.accent : DNColors.surface)
+                                                    .frame(width: 48, height: 48)
+                                                Text(String(contact.name.prefix(1)).uppercased())
+                                                    .font(.system(size: 18, weight: .bold))
+                                                    .foregroundColor(isSelected ? .white : DNColors.textSecondary)
+                                            }
+                                            Text(contact.name.components(separatedBy: " ").first ?? contact.name)
+                                                .font(.system(size: 11))
+                                                .foregroundColor(isSelected ? DNColors.accent : DNColors.textTertiary)
+                                                .lineLimit(1)
+                                        }
+                                        .frame(width: 72)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal)
                         }
                     }
-                    .padding(.bottom, 5)
                 }
                 
-                if let speechError = speechService.error {
-                    Text(speechError)
-                        .font(.caption)
-                        .foregroundColor(.red)
+                // Add New Attendee
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("ADD ATTENDEE")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(DNColors.textTertiary)
+                        .tracking(1.2)
                         .padding(.horizontal)
-                }
-            }
-            .onChange(of: speechService.transcript) { newValue in
-                parseTranscript(newValue)
-            }
-            
-            VStack(alignment: .leading) {
-                if !attendees.isEmpty {
-                    List {
-                        ForEach(attendees) { attendee in
-                            HStack {
-                                Text(attendee.name)
-                                Spacer()
-                                Text(attendee.email)
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                    
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            DNTextField(placeholder: "Name", text: $newAttendeeName)
+                            DNTextField(placeholder: "Email", text: $newAttendeeEmail)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                        }
+                        .padding(.horizontal)
+                        
+                        HStack(spacing: 12) {
+                            Button(action: addAttendee) {
+                                Label("Add", systemImage: "plus")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(10)
+                                    .background(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty ? DNColors.surface : DNColors.accent)
+                                    .foregroundColor(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty ? DNColors.textTertiary : .white)
+                                    .cornerRadius(10)
+                            }
+                            .disabled(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty)
+                            
+                            Button(action: toggleListening) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: speechService.isListening ? "mic.fill" : "mic")
+                                        .font(.system(size: 14))
+                                    Text(speechService.isListening ? "Listening..." : "Dictate")
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(10)
+                                .background(speechService.isListening ? Color.red.opacity(0.2) : DNColors.surface)
+                                .foregroundColor(speechService.isListening ? .red : DNColors.textSecondary)
+                                .cornerRadius(10)
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(speechService.isListening ? Color.red.opacity(0.4) : DNColors.divider, lineWidth: 1))
                             }
                         }
-                        .onDelete(perform: removeAttendee)
+                        .padding(.horizontal)
                     }
-                    .listStyle(PlainListStyle())
-                } else {
-                    VStack {
-                        Spacer()
-                        Text("Add attendees to start")
-                            .foregroundColor(.gray)
-                        Spacer()
+                    
+                    if speechService.isListening {
+                        HStack(spacing: 3) {
+                            ForEach(0..<20) { _ in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.red.opacity(0.7))
+                                    .frame(width: 3, height: CGFloat.random(in: 4...20))
+                            }
+                        }
+                        .padding(.horizontal)
+                        .animation(.easeInOut(duration: 0.3).repeatForever(), value: speechService.isListening)
                     }
                 }
-            }
-            
-            Button(action: {
-                recorder.startRecording()
-            }) {
-                Text("Start Recording")
-                    .font(.headline)
+                
+                // Attendees List
+                if !attendees.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("ATTENDEES (\(attendees.count))")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(DNColors.textTertiary)
+                            .tracking(1.2)
+                            .padding(.horizontal)
+                        
+                        VStack(spacing: 1) {
+                            ForEach(attendees) { attendee in
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(DNColors.accent.opacity(0.15))
+                                            .frame(width: 36, height: 36)
+                                        Text(String(attendee.name.prefix(1)).uppercased())
+                                            .font(.system(size: 13, weight: .bold))
+                                            .foregroundColor(DNColors.accent)
+                                    }
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(attendee.name)
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(DNColors.textPrimary)
+                                        Text(attendee.email)
+                                            .font(.system(size: 12))
+                                            .foregroundColor(DNColors.textTertiary)
+                                    }
+                                    Spacer()
+                                    Button(action: {
+                                        attendees.removeAll(where: { $0.email == attendee.email })
+                                    }) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundColor(DNColors.textTertiary)
+                                            .font(.system(size: 18))
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                                .background(DNColors.surface)
+                            }
+                        }
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                    }
+                }
+                
+                Spacer(minLength: 20)
+                
+                // Start Recording Button
+                Button(action: { recorder.startRecording() }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 18))
+                        Text("Start Recording")
+                            .font(.system(size: 17, weight: .bold))
+                    }
                     .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(attendees.isEmpty ? Color.gray : Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+                    .padding(18)
+                    .background(attendees.isEmpty ? DNColors.surface : DNColors.accent)
+                    .foregroundColor(attendees.isEmpty ? DNColors.textTertiary : .white)
+                    .cornerRadius(16)
+                    .shadow(color: attendees.isEmpty ? .clear : DNColors.accent.opacity(0.4), radius: 16, x: 0, y: 6)
+                }
+                .disabled(attendees.isEmpty)
+                .padding(.horizontal)
+                .padding(.bottom, 30)
             }
-            .disabled(attendees.isEmpty)
-            .padding(.horizontal)
         }
+        .onChange(of: speechService.transcript) { newValue in parseTranscript(newValue) }
     }
     
     private var recordingSection: some View {
-        VStack(spacing: 30) {
+        VStack(spacing: 40) {
+            Spacer()
+            
             if recorder.isRecording {
-                VStack {
-                    Text("Recording...")
-                        .font(.title)
-                        .foregroundColor(.red)
+                VStack(spacing: 24) {
+                    // Pulsing mic
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.1))
+                            .frame(width: 120, height: 120)
+                        Circle()
+                            .fill(Color.red.opacity(0.2))
+                            .frame(width: 90, height: 90)
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 64, height: 64)
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(.white)
+                    }
                     
+                    Text("Recording...")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(DNColors.textPrimary)
+                    
+                    // Animated waveform
                     HStack(spacing: 4) {
-                        ForEach(0..<10) { index in
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.red)
-                                .frame(width: 4, height: CGFloat.random(in: 10...50))
+                        ForEach(0..<24) { i in
+                            AnimatedWaveBar(delay: Double(i) * 0.05)
                         }
                     }
+                    .frame(height: 60)
+                    .padding(.horizontal, 20)
                 }
                 
-                Button(action: {
-                    recorder.stopRecording()
-                }) {
-                    Image(systemName: "stop.circle.fill")
-                        .resizable()
-                        .frame(width: 80, height: 80)
-                        .foregroundColor(.red)
+                Button(action: { recorder.stopRecording() }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 16))
+                        Text("Stop Recording")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(16)
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(14)
+                    .shadow(color: Color.red.opacity(0.4), radius: 12, x: 0, y: 4)
                 }
+                .padding(.horizontal, 40)
+                
             } else if let url = recorder.recordingURL {
                 VStack(spacing: 20) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .resizable()
-                        .frame(width: 60, height: 60)
-                        .foregroundColor(.green)
+                    ZStack {
+                        Circle()
+                            .fill(DNColors.successGreen.opacity(0.15))
+                            .frame(width: 90, height: 90)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundColor(DNColors.successGreen)
+                    }
                     
                     Text("Recording Saved")
-                        .font(.title2)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(DNColors.textPrimary)
                     
-                    Text("\(attendees.count) attendees will receive the recap.")
-                        .foregroundColor(.gray)
+                    Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap.")
+                        .font(.system(size: 15))
+                        .foregroundColor(DNColors.textSecondary)
+                        .multilineTextAlignment(.center)
                     
-                    Button(action: {
-                        uploadMeeting(url: url)
-                    }) {
-                        if isUploading {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    Button(action: { uploadMeeting(url: url) }) {
+                        Group {
+                            if isUploading {
+                                HStack(spacing: 10) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    Text("Uploading...")
+                                        .font(.system(size: 16, weight: .bold))
+                                }
                                 .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .cornerRadius(10)
-                        } else {
-                            Text("Upload & Process")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.blue)
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
+                            } else {
+                                Label("Upload & Process", systemImage: "arrow.up.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                            }
                         }
+                        .padding(16)
+                        .background(DNColors.accent)
+                        .foregroundColor(.white)
+                        .cornerRadius(14)
+                        .shadow(color: DNColors.accent.opacity(0.4), radius: 12, x: 0, y: 4)
                     }
                     .disabled(isUploading)
+                    .padding(.horizontal, 30)
                     
                     Button("Discard Recording") {
                         recorder.recordingURL = nil
                     }
-                    .foregroundColor(.red)
+                    .foregroundColor(Color.red.opacity(0.7))
+                    .font(.system(size: 14))
                 }
             }
+            
+            Spacer()
         }
     }
     
+    // MARK: - Helpers (same as before)
     func addAttendee() {
         guard !newAttendeeEmail.isEmpty, !newAttendeeName.isEmpty else { return }
         let attendee = Attendee(email: newAttendeeEmail, name: newAttendeeName)
         if !attendees.contains(where: { $0.email == attendee.email }) {
             attendees.append(attendee)
-            // Auto-save to contacts
             contactService.saveContact(attendee, via: apiService)
         }
         newAttendeeEmail = ""
@@ -272,52 +361,66 @@ struct RecordingView<T: APIServiceProtocol>: View {
         }
     }
     
-    func removeAttendee(at offsets: IndexSet) {
-        attendees.remove(atOffsets: offsets)
-    }
-    
     func toggleListening() {
-        if speechService.isListening {
-            speechService.stopListening()
-        } else {
-            speechService.startListening()
-        }
+        if speechService.isListening { speechService.stopListening() }
+        else { speechService.startListening() }
     }
     
     func parseTranscript(_ text: String) {
         let components = text.components(separatedBy: .whitespacesAndNewlines)
         var nameParts: [String] = []
-        
         for component in components {
-            if component.contains("@") {
-                newAttendeeEmail = component.lowercased()
-            } else if !component.isEmpty {
-                nameParts.append(component)
-            }
+            if component.contains("@") { newAttendeeEmail = component.lowercased() }
+            else if !component.isEmpty { nameParts.append(component) }
         }
-        
-        if !nameParts.isEmpty {
-            newAttendeeName = nameParts.joined(separator: " ")
-        }
+        if !nameParts.isEmpty { newAttendeeName = nameParts.joined(separator: " ") }
     }
     
     func uploadMeeting(url: URL) {
         isUploading = true
-        
         Task {
             do {
                 _ = try await apiService.uploadMeeting(audioURL: url, attendees: attendees, organizerName: profileService.userName)
-                await MainActor.run {
-                    isUploading = false
-                    dismiss()
-                }
+                await MainActor.run { isUploading = false; dismiss() }
             } catch {
-                print("Upload failed: \(error)")
-                await MainActor.run {
-                    isUploading = false
-                }
+                await MainActor.run { isUploading = false }
             }
         }
     }
 }
 
+// MARK: - Animated Waveform Bar
+struct AnimatedWaveBar: View {
+    let delay: Double
+    @State private var height: CGFloat = 8
+    
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(Color.red.opacity(0.8))
+            .frame(width: 4, height: height)
+            .onAppear {
+                withAnimation(Animation.easeInOut(duration: Double.random(in: 0.4...0.8)).repeatForever(autoreverses: true).delay(delay)) {
+                    height = CGFloat.random(in: 12...52)
+                }
+            }
+    }
+}
+
+// MARK: - DN Text Field
+struct DNTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    
+    var body: some View {
+        TextField("", text: $text)
+            .placeholder(when: text.isEmpty) {
+                Text(placeholder).foregroundColor(DNColors.textTertiary)
+            }
+            .foregroundColor(DNColors.textPrimary)
+            .padding(10)
+            .background(DNColors.surface)
+            .cornerRadius(10)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(DNColors.divider, lineWidth: 1))
+            .font(.system(size: 14))
+    }
+}
