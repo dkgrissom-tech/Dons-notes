@@ -14,6 +14,7 @@ class SpeechRecognizerService: ObservableObject {
     // Callers read fullTranscript for trigger detection.
     @Published var transcript = ""         // alias for fullTranscript — views & LUMEN read this
     @Published var isListening = false
+    @Published var audioLevel: Float = 0    // 0.0–1.0 RMS from engine tap — drives orb + waveform
     @Published var error: String?
 
     private var fullTranscript: String = ""   // cumulative across all restart windows
@@ -57,6 +58,7 @@ class SpeechRecognizerService: ObservableObject {
         recognitionTask?.cancel()
         recognitionTask = nil
         isListening = false
+        audioLevel = 0
     }
 
     // MARK: - Internal
@@ -139,6 +141,16 @@ class SpeechRecognizerService: ObservableObject {
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
+            // Calculate RMS amplitude from raw PCM samples
+            guard let channelData = buffer.floatChannelData?[0] else { return }
+            let frameCount = Int(buffer.frameLength)
+            guard frameCount > 0 else { return }
+            var rms: Float = 0
+            for i in 0..<frameCount { rms += channelData[i] * channelData[i] }
+            rms = sqrt(rms / Float(frameCount))
+            // Normalize: speech typically peaks around 0.05–0.3 RMS — scale to 0–1
+            let normalized = min(1.0, rms * 8.0)
+            DispatchQueue.main.async { self?.audioLevel = normalized }
         }
 
         audioEngine.prepare()

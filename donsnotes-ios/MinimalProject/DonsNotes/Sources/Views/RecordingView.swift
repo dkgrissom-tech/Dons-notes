@@ -93,7 +93,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
                 // LUMEN header
                 VStack(spacing: 10) {
-                    LUMENOrbView(state: .idle, recorder: AudioRecorder(), size: 100)
+                    LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 100)
                     Text("NEW MEETING")
                         .font(LM.Fonts.mono(13, weight: .bold))
                         .foregroundColor(LM.Colors.cyan)
@@ -260,7 +260,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     // recorder passed as @ObservedObject so orb owns the audioLevel subscription
                     LUMENOrbView(
                         state: lumen.orbState,
-                        recorder: recorder,
+                        speechService: speechService,
                         size: 180
                     )
                     .onReceive(speechService.$transcript) { t in
@@ -268,7 +268,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     }
 
                     // Waveform — recorder passed directly for live amplitude
-                    LUMENWaveformView(recorder: recorder)
+                    LUMENWaveformView(speechService: speechService)
                         .padding(.horizontal, LM.Space.xl)
                         .padding(.top, LM.Space.lg)
 
@@ -309,7 +309,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 // Upload section
                 VStack(spacing: LM.Space.lg) {
                     Spacer()
-                    LUMENOrbView(state: .idle, recorder: AudioRecorder(), size: 120)
+                    LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 120)
 
                     Text("RECORDING COMPLETE")
                         .font(LM.Fonts.mono(13, weight: .bold))

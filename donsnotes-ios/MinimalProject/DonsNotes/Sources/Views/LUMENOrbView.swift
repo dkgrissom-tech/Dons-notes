@@ -81,7 +81,7 @@ private struct OrbValues {
 // MARK: - LUMEN Orb View
 struct LUMENOrbView: View {
     let state: LUMENOrbState
-    @ObservedObject var recorder: AudioRecorder   // direct subscription → re-renders at 20 fps
+    @ObservedObject var speechService: SpeechRecognizerService   // direct subscription → re-renders at 20 fps
     var size: CGFloat = 180
 
     @State private var triggerFlash: Double = 0
@@ -92,7 +92,7 @@ struct LUMENOrbView: View {
     var body: some View {
         TimelineView(.animation) { timeline in
             let t   = timeline.date.timeIntervalSinceReferenceDate
-            let amp = CGFloat(recorder.audioLevel)
+            let amp = CGFloat(speechService.audioLevel)
             let v   = OrbValues(state: state, amp: amp, t: t,
                                 triggerScale: triggerScale,
                                 triggerFlash: triggerFlash)
@@ -260,12 +260,12 @@ struct LUMENWaveBar: View {
 
 // MARK: - LUMEN Waveform Row
 struct LUMENWaveformView: View {
-    @ObservedObject var recorder: AudioRecorder
+    @ObservedObject var speechService: SpeechRecognizerService
 
     var body: some View {
         HStack(spacing: 3) {
             ForEach(0..<32, id: \.self) { i in
-                LUMENWaveBar(amplitude: recorder.audioLevel, index: i, totalBars: 32)
+                LUMENWaveBar(amplitude: speechService.audioLevel, index: i, totalBars: 32)
             }
         }
         .frame(height: 60)

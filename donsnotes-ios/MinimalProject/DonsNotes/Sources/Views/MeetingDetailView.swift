@@ -43,7 +43,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                             }
                             if meeting.status.isProcessing {
                                 HStack(spacing: 8) {
-                                    LUMENOrbView(state: .responding, recorder: AudioRecorder(), size: 28)
+                                    LUMENOrbView(state: .responding, speechService: SpeechRecognizerService(), size: 28)
                                     Text("LUMEN is processing your meeting...")
                                         .font(LM.Fonts.text(12))
                                         .foregroundColor(LM.Colors.textSecondary)

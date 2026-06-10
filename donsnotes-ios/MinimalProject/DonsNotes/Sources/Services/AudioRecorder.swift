@@ -5,7 +5,8 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var audioRecorder: AVAudioRecorder?
     @Published var isRecording = false
     @Published var recordingURL: URL?
-    @Published var audioLevel: Float = 0
+    // audioLevel removed — amplitude is now published by SpeechRecognizerService
+    // directly from the AVAudioEngine tap (the only live audio path during recording).
 
     private var meteringTimer: Timer?
 
@@ -31,13 +32,11 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
             audioRecorder = try AVAudioRecorder(url: path, settings: settings)
             audioRecorder?.delegate = self
-            audioRecorder?.isMeteringEnabled = true
+            audioRecorder?.isMeteringEnabled = false  // metering handled by SpeechRecognizerService
             audioRecorder?.record()
 
             isRecording = true
             recordingURL = nil   // Clear any previous URL — only set on stop
-
-            startMetering()
         } catch {
             print("AudioRecorder.startRecording error: \(error)")
         }
@@ -50,21 +49,8 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         isRecording = false
         meteringTimer?.invalidate()
         meteringTimer = nil
-        audioLevel = 0
         // Surface URL after stop so upload screen shows correctly
         recordingURL = url
-    }
-
-    private func startMetering() {
-        meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            guard let self = self, let recorder = self.audioRecorder else { return }
-            recorder.updateMeters()
-            let level = recorder.averagePower(forChannel: 0)
-            DispatchQueue.main.async {
-                // Normalize -60…0 dB → 0…1
-                self.audioLevel = max(0, min(1, (level + 60) / 60))
-            }
-        }
     }
 
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
