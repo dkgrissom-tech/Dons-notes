@@ -19,7 +19,7 @@
     <key>CFBundleShortVersionString</key>
     <string>1.2</string>
     <key>CFBundleVersion</key>
-    <string>14</string>
+    <string>15</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIApplicationSceneManifest</key>
@@ -52,7 +52,7 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>We need access to your microphone to record meeting voice notes and for voice input.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>We use speech recognition to let you add attendees by voice.</string>
+    <string>We use speech recognition to transcribe your meetings and enable voice commands.</string>
     <key>UIApplicationShortcutItems</key>
     <array>
         <dict>

@@ -1,62 +1,31 @@
 import Foundation
 import AVFoundation
 
-class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
-    var audioRecorder: AVAudioRecorder?
-    @Published var isRecording = false
-    @Published var recordingURL: URL?
-    // audioLevel removed — amplitude is now published by SpeechRecognizerService
-    // directly from the AVAudioEngine tap (the only live audio path during recording).
+/// Thin adapter that delegates all recording work to SpeechRecognizerService.
+/// Previously AudioRecorder ran its own AVAudioRecorder which conflicted with
+/// the AVAudioEngine tap in SpeechRecognizerService — two drivers fighting for
+/// the same audio input, causing the engine tap to produce silence.
+///
+/// Now AudioRecorder holds a reference to the shared SpeechRecognizerService
+/// and proxies isRecording / recordingURL so existing callers compile unchanged.
+class AudioRecorder: NSObject, ObservableObject {
+    // Proxied from SpeechRecognizerService
+    @Published var isRecording: Bool = false
+    @Published var recordingURL: URL? = nil
 
-    private var meteringTimer: Timer?
+    // Injected after init by RecordingView
+    weak var speechService: SpeechRecognizerService?
 
     func startRecording() {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            // Use .measurement mode so SpeechRecognizerService can share the same
-            // session without an AVAudioSession category conflict crash.
-            try session.setCategory(.playAndRecord, mode: .measurement,
-                                    options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
-
-            let settings: [String: Any] = [
-                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                AVSampleRateKey: 44100,
-                AVNumberOfChannelsKey: 1,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-            ]
-
-            let fileName = "recording_\(Int(Date().timeIntervalSince1970)).m4a"
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let path = docs.appendingPathComponent(fileName)
-
-            audioRecorder = try AVAudioRecorder(url: path, settings: settings)
-            audioRecorder?.delegate = self
-            audioRecorder?.isMeteringEnabled = false  // metering handled by SpeechRecognizerService
-            audioRecorder?.record()
-
-            isRecording = true
-            recordingURL = nil   // Clear any previous URL — only set on stop
-        } catch {
-            print("AudioRecorder.startRecording error: \(error)")
-        }
+        isRecording = true
+        recordingURL = nil
+        // Actual recording is started by RecordingView calling speechService.startListening()
     }
 
     func stopRecording() {
-        guard let recorder = audioRecorder else { return }
-        let url = recorder.url
-        recorder.stop()
         isRecording = false
-        meteringTimer?.invalidate()
-        meteringTimer = nil
-        // Surface URL after stop so upload screen shows correctly
-        recordingURL = url
-    }
-
-    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        isRecording = false
-        meteringTimer?.invalidate()
-        meteringTimer = nil
-        if flag { recordingURL = recorder.url }
+        // Actual stop is called by RecordingView calling speechService.stopListening()
+        // After stop, SpeechRecognizerService publishes recordingURL — we mirror it
+        recordingURL = speechService?.recordingURL
     }
 }

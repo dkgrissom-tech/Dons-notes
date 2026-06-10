@@ -1,8 +1,27 @@
 import SwiftUI
 import AVFoundation
 
+// ── BUILD 15: Root cause fix ─────────────────────────────────────────────────
+//
+// ROOT CAUSE: Two audio drivers fighting for the same input.
+// AudioRecorder used AVAudioRecorder which called AVAudioSession.setCategory()
+// and then grabbed the input. SpeechRecognizerService then called setCategory()
+// again and tried to install an AVAudioEngine tap on the SAME input node.
+// AVAudioEngine silently won the session but AVAudioRecorder had already
+// opened the hardware — the engine tap received silence. audioLevel = 0.
+// Orb and waveform never reacted. Speech recognition still worked (Apple's
+// speech framework has its own internal path) but the RMS amplitude path was dead.
+//
+// FIX: Eliminate AVAudioRecorder entirely. SpeechRecognizerService now owns
+// the AVAudioSession + AVAudioEngine and writes the audio file itself from
+// the same tap that feeds the recognizer and computes RMS. One driver, no conflict.
+//
+// RecordingView is now driven entirely by speechService:
+//   speechService.isListening  → replaces recorder.isRecording
+//   speechService.recordingURL → replaces recorder.recordingURL
+// AudioRecorder is kept as an empty stub so other files that import it compile.
+
 struct RecordingView<T: APIServiceProtocol>: View {
-    @StateObject var recorder = AudioRecorder()
     @ObservedObject var apiService: T
     @ObservedObject var contactService = ContactService.shared
     @ObservedObject var profileService = ProfileService.shared
@@ -27,10 +46,15 @@ struct RecordingView<T: APIServiceProtocol>: View {
             ZStack {
                 LM.Colors.void.ignoresSafeArea()
 
-                if !recorder.isRecording && recorder.recordingURL == nil {
-                    setupSection
-                } else {
+                // Show setup screen when not recording and no file ready
+                // Show recording HUD when listening
+                // Show upload screen when recording stopped and file exists
+                if speechService.isListening {
                     recordingSection
+                } else if speechService.recordingURL != nil {
+                    uploadSection
+                } else {
+                    setupSection
                 }
 
                 // LUMEN response overlay
@@ -49,19 +73,18 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     .animation(.easeInOut(duration: 0.3), value: lumen.isShowingResponse)
                 }
             }
-            .navigationTitle(recorder.isRecording ? "" : "New Meeting")
+            .navigationTitle(speechService.isListening ? "" : "New Meeting")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    if !recorder.isRecording {
+                    if !speechService.isListening {
                         Button("Cancel") { dismiss() }
                             .foregroundColor(LM.Colors.textSecondary)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    if recorder.isRecording {
-                        // Voice toggle button
+                    if speechService.isListening {
                         Button(action: { lumen.setVoiceEnabled(!lumen.isVoiceEnabled) }) {
                             HStack(spacing: 4) {
                                 Image(systemName: lumen.isVoiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
@@ -74,7 +97,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             .padding(.vertical, 5)
                             .background(lumen.isVoiceEnabled ? LM.Colors.cyanGlow : LM.Colors.surface)
                             .cornerRadius(LM.Radius.pill)
-                            .overlay(RoundedRectangle(cornerRadius: LM.Radius.pill).stroke(lumen.isVoiceEnabled ? LM.Colors.borderCyan : LM.Colors.borderDim, lineWidth: 1))
+                            .overlay(RoundedRectangle(cornerRadius: LM.Radius.pill)
+                                .stroke(lumen.isVoiceEnabled ? LM.Colors.borderCyan : LM.Colors.borderDim, lineWidth: 1))
                         }
                     }
                 }
@@ -82,29 +106,19 @@ struct RecordingView<T: APIServiceProtocol>: View {
             .onAppear {
                 Task { await contactService.syncContacts(from: apiService) }
             }
-            // ── FIX: transcript observer attached to the outer view ──────────────────
-            // Previously, .onReceive was chained onto LUMENOrbView inside recordingSection.
-            // While technically functional, a view modifier on a conditionally rendered child
-            // can be recreated/destroyed as SwiftUI diffs the tree, causing missed emissions
-            // during transitions. Attaching .onReceive here — on the stable NavigationView
-            // content — guarantees it is always active while RecordingView is on screen.
+            // Transcript observer on stable outer view
             .onReceive(speechService.$transcript) { t in
-                // Only process transcript for trigger detection during active recording
-                guard recorder.isRecording else { return }
+                guard speechService.isListening else { return }
                 lumen.processTranscript(t, fullContext: t)
             }
         }
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Setup Section
+    // MARK: - Setup Screen
     private var setupSection: some View {
         ScrollView {
             VStack(spacing: LM.Space.lg) {
-
-                // LUMEN header — decorative orb uses a throwaway SpeechRecognizerService
-                // instance that never starts listening. That is intentional: this orb is
-                // purely decorative (idle state breathing only, no amplitude needed).
                 VStack(spacing: 10) {
                     LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 100)
                     Text("NEW MEETING")
@@ -119,7 +133,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 }
                 .padding(.top, LM.Space.md)
 
-                // Quick add contacts
                 if !contactService.savedContacts.isEmpty {
                     VStack(alignment: .leading, spacing: LM.Space.sm) {
                         LUMENSectionHeader(title: "Quick Add", icon: "person.fill.badge.plus")
@@ -153,7 +166,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     }
                 }
 
-                // Add attendee
                 VStack(alignment: .leading, spacing: LM.Space.sm) {
                     LUMENSectionHeader(title: "Add Attendee", icon: "person.badge.plus")
                         .padding(.horizontal, LM.Space.md)
@@ -164,15 +176,15 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         }
                         .padding(.horizontal, LM.Space.md)
                         HStack(spacing: 10) {
-                            LUMENButton(title: "Add", icon: "plus", style: (newAttendeeEmail.isEmpty || newAttendeeName.isEmpty) ? .ghost : .primary, action: addAttendee)
-                                .disabled(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty)
-                            LUMENButton(title: speechService.isListening ? "Listening..." : "Dictate", icon: speechService.isListening ? "mic.fill" : "mic", style: speechService.isListening ? .danger : .secondary, action: toggleListening)
+                            LUMENButton(title: "Add", icon: "plus",
+                                        style: (newAttendeeEmail.isEmpty || newAttendeeName.isEmpty) ? .ghost : .primary,
+                                        action: addAttendee)
+                            .disabled(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty)
                         }
                         .padding(.horizontal, LM.Space.md)
                     }
                 }
 
-                // Attendees list
                 if !attendees.isEmpty {
                     VStack(alignment: .leading, spacing: LM.Space.sm) {
                         LUMENSectionHeader(title: "Attendees (\(attendees.count))", icon: "person.2.fill")
@@ -208,7 +220,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
                 Spacer(minLength: 20)
 
-                // LUMEN tip
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
                     Text("Say \"Hey Lumen\" during the meeting to ask AI a question")
@@ -218,7 +229,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .padding(.horizontal, LM.Space.lg)
                 .multilineTextAlignment(.center)
 
-                // Start button
                 LUMENButton(title: "Start Recording", icon: "mic.fill", style: .primary) {
                     startRecording()
                 }
@@ -226,13 +236,11 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .padding(.bottom, LM.Space.xl)
             }
         }
-        .onChange(of: speechService.transcript) { _, v in parseTranscript(v) }
     }
 
-    // MARK: - Recording Section
+    // MARK: - Recording HUD
     private var recordingSection: some View {
         ZStack {
-            // Background grid lines for HUD effect
             GeometryReader { geo in
                 Path { p in
                     let spacing: CGFloat = 40
@@ -253,123 +261,103 @@ struct RecordingView<T: APIServiceProtocol>: View {
             }
             .ignoresSafeArea()
 
-            if recorder.isRecording {
-                VStack(spacing: 0) {
-                    Spacer()
+            VStack(spacing: 0) {
+                Spacer()
 
-                    // Timer
-                    Text(elapsedFormatted)
-                        .font(LM.Fonts.mono(42, weight: .bold))
-                        .foregroundColor(LM.Colors.textPrimary)
-                        .padding(.bottom, 8)
+                Text(elapsedFormatted)
+                    .font(LM.Fonts.mono(42, weight: .bold))
+                    .foregroundColor(LM.Colors.textPrimary)
+                    .padding(.bottom, 8)
 
-                    Text("REC")
-                        .font(LM.Fonts.mono(11, weight: .bold))
-                        .foregroundColor(LM.Colors.red)
-                        .tracking(4)
-                        .padding(.bottom, LM.Space.xl)
+                Text("REC")
+                    .font(LM.Fonts.mono(11, weight: .bold))
+                    .foregroundColor(LM.Colors.red)
+                    .tracking(4)
+                    .padding(.bottom, LM.Space.xl)
 
-                    // ── FIX: Live orb receives the SAME speechService instance that
-                    // startListening() was called on. This is `self.speechService` — the
-                    // @StateObject created once for the lifetime of RecordingView. It is
-                    // NOT a new SpeechRecognizerService(). The decorative orbs on setup and
-                    // upload screens DO use `SpeechRecognizerService()` throwaway instances —
-                    // those are intentionally idle. The live orb here uses the real one. ✓
-                    //
-                    // FIX: lumen.orbState is set to .listening in startRecording() so the
-                    // orb reacts to amplitude immediately. Previously orbState stayed .idle
-                    // the entire recording (until "hey lumen" triggered), meaning the orb
-                    // breathed gently but never pulsed with the speaker's voice.
-                    LUMENOrbView(
-                        state: lumen.orbState,
-                        speechService: speechService,   // ← same instance startListening() runs on
-                        size: 180
-                    )
-                    // Note: .onReceive for lumen.processTranscript has been moved to the outer
-                    // NavigationView content (see body above) for stability across transitions.
+                // Live orb — same speechService that is actively listening
+                LUMENOrbView(
+                    state: lumen.orbState,
+                    speechService: speechService,
+                    size: 180
+                )
 
-                    // Waveform — receives same speechService for live amplitude
-                    LUMENWaveformView(speechService: speechService)
-                        .padding(.horizontal, LM.Space.xl)
-                        .padding(.top, LM.Space.lg)
+                LUMENWaveformView(speechService: speechService)
+                    .padding(.horizontal, LM.Space.xl)
+                    .padding(.top, LM.Space.lg)
 
-                    Spacer()
+                Spacer()
 
-                    // Attendees row
-                    if !attendees.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(attendees) { a in
-                                    VStack(spacing: 4) {
-                                        ZStack {
-                                            Circle().fill(LM.Colors.cyanGlow).frame(width: 32, height: 32)
-                                            Text(String(a.name.prefix(1)).uppercased())
-                                                .font(LM.Fonts.rounded(12, weight: .bold))
-                                                .foregroundColor(LM.Colors.cyan)
-                                        }
-                                        Text(a.name.components(separatedBy: " ").first ?? a.name)
-                                            .font(LM.Fonts.text(9))
-                                            .foregroundColor(LM.Colors.textTertiary)
+                if !attendees.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(attendees) { a in
+                                VStack(spacing: 4) {
+                                    ZStack {
+                                        Circle().fill(LM.Colors.cyanGlow).frame(width: 32, height: 32)
+                                        Text(String(a.name.prefix(1)).uppercased())
+                                            .font(LM.Fonts.rounded(12, weight: .bold))
+                                            .foregroundColor(LM.Colors.cyan)
                                     }
+                                    Text(a.name.components(separatedBy: " ").first ?? a.name)
+                                        .font(LM.Fonts.text(9))
+                                        .foregroundColor(LM.Colors.textTertiary)
                                 }
                             }
-                            .padding(.horizontal, LM.Space.md)
                         }
-                        .padding(.bottom, LM.Space.md)
+                        .padding(.horizontal, LM.Space.md)
                     }
-
-                    // Stop button
-                    LUMENButton(title: "Stop Recording", icon: "stop.fill", style: .danger) {
-                        stopRecording()
-                    }
-                    .padding(.horizontal, LM.Space.md)
-                    .padding(.bottom, LM.Space.xl)
+                    .padding(.bottom, LM.Space.md)
                 }
 
-            } else if let url = recorder.recordingURL {
-                // Upload section — decorative idle orb (new instance, never listens, correct)
-                VStack(spacing: LM.Space.lg) {
-                    Spacer()
-                    LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 120)
-
-                    Text("RECORDING COMPLETE")
-                        .font(LM.Fonts.mono(13, weight: .bold))
-                        .foregroundColor(LM.Colors.green)
-                        .tracking(2)
-
-                    Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap")
-                        .font(LM.Fonts.text(14))
-                        .foregroundColor(LM.Colors.textSecondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, LM.Space.xl)
-
-                    Spacer()
-
-                    LUMENButton(title: isUploading ? "Uploading..." : "Upload & Process", icon: isUploading ? nil : "arrow.up.circle.fill", style: .primary) {
-                        uploadMeeting(url: url)
-                    }
-                    .disabled(isUploading)
-                    .padding(.horizontal, LM.Space.md)
-
-                    Button("Discard Recording") { recorder.recordingURL = nil }
-                        .font(LM.Fonts.text(13))
-                        .foregroundColor(LM.Colors.red.opacity(0.7))
-                        .padding(.bottom, LM.Space.xl)
+                LUMENButton(title: "Stop Recording", icon: "stop.fill", style: .danger) {
+                    stopRecording()
                 }
+                .padding(.horizontal, LM.Space.md)
+                .padding(.bottom, LM.Space.xl)
             }
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Upload Screen
+    private var uploadSection: some View {
+        VStack(spacing: LM.Space.lg) {
+            Spacer()
+            LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 120)
+
+            Text("RECORDING COMPLETE")
+                .font(LM.Fonts.mono(13, weight: .bold))
+                .foregroundColor(LM.Colors.green)
+                .tracking(2)
+
+            Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap")
+                .font(LM.Fonts.text(14))
+                .foregroundColor(LM.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, LM.Space.xl)
+
+            Spacer()
+
+            if let url = speechService.recordingURL {
+                LUMENButton(title: isUploading ? "Uploading..." : "Upload & Process",
+                            icon: isUploading ? nil : "arrow.up.circle.fill", style: .primary) {
+                    uploadMeeting(url: url)
+                }
+                .disabled(isUploading)
+                .padding(.horizontal, LM.Space.md)
+            }
+
+            Button("Discard Recording") { speechService.recordingURL = nil }
+                .font(LM.Fonts.text(13))
+                .foregroundColor(LM.Colors.red.opacity(0.7))
+                .padding(.bottom, LM.Space.xl)
+        }
+    }
+
+    // MARK: - Actions
     func startRecording() {
-        recorder.startRecording()
         speechService.startListening()
         lumen.reset()
-        // ── FIX: set orbState to .listening immediately so the orb pulses with voice ──
-        // Previously lumen.reset() left orbState = .idle and nothing set it to .listening
-        // until "hey lumen" fired. The orb breathed (idle sin animation) but never reacted
-        // to the speaker's voice amplitude. Setting .listening here enables the amplitude-
-        // driven OrbValues.listening case from the moment recording begins.
         lumen.orbState = .listening
         elapsedSeconds = 0
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
@@ -379,7 +367,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 
     func stopRecording() {
-        recorder.stopRecording()
         speechService.stopListening()
         recordingTimer?.invalidate()
         recordingTimer = nil
@@ -402,43 +389,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
         else { attendees.append(contact) }
     }
 
-    func toggleListening() {
-        if speechService.isListening { speechService.stopListening() } else { speechService.startListening() }
-    }
-
-    func parseTranscript(_ text: String) {
-        // Split on whitespace, strip punctuation that speech recognition adds
-        let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tokens = raw.components(separatedBy: .whitespaces).map {
-            $0.trimmingCharacters(in: CharacterSet.punctuationCharacters)
-        }.filter { !$0.isEmpty }
-
-        var detectedEmail: String? = nil
-        var nameParts: [String] = []
-
-        for token in tokens {
-            // An email token contains @ and a dot after the @
-            let lower = token.lowercased()
-            if lower.contains("@") && lower.contains(".") {
-                detectedEmail = lower
-            } else {
-                // Only add to name if it doesn't look like a domain fragment
-                if !lower.hasPrefix("@") && !lower.hasSuffix(".com") && !lower.hasSuffix(".net") {
-                    nameParts.append(token)
-                }
-            }
-        }
-
-        // Only update fields when we have clear signal — don't overwrite what user typed
-        if let email = detectedEmail, newAttendeeEmail.isEmpty {
-            newAttendeeEmail = email
-        }
-        if !nameParts.isEmpty, newAttendeeName.isEmpty {
-            // Take first 3 tokens max as name (avoid dumping whole transcript)
-            newAttendeeName = nameParts.prefix(3).joined(separator: " ")
-        }
-    }
-
     func uploadMeeting(url: URL) {
         isUploading = true
         Task {
@@ -451,5 +401,3 @@ struct RecordingView<T: APIServiceProtocol>: View {
         }
     }
 }
-
-// LUMENWaveBar and LUMENWaveformView are defined in LUMENOrbView.swift
