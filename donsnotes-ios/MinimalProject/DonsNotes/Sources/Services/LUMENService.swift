@@ -28,6 +28,7 @@ final class LUMENService: ObservableObject {
     @Published var isShowingResponse: Bool = false
     @Published var insights: [LUMENInsight] = []
     @Published var isProcessing: Bool = false
+    @Published var isAwake: Bool = false     // true after orb tap, waiting for question
 
     // Trigger detection
     private let triggerWords = ["hey", "lumen"]
@@ -79,7 +80,19 @@ final class LUMENService: ObservableObject {
 
         let lower = text.lowercased()
 
-        // If already capturing a question after trigger, collect new words.
+        // TAP-TO-WAKE: if orb was tapped, collect everything spoken after the tap.
+        if isAwake {
+            guard text.count > wakeTranscriptLength else { return }
+            let question = String(text.dropFirst(wakeTranscriptLength))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if question.count > 3 {
+                isAwake = false
+                triggerQuestion(question: question, context: fullContext)
+            }
+            return
+        }
+
+        // If already capturing a question after hey-lumen trigger, collect new words.
         if captureNextSentence {
             // The question is everything after "hey lumen" in the full transcript.
             if let range = lower.range(of: "hey lumen") {
@@ -100,7 +113,6 @@ final class LUMENService: ObservableObject {
             guard !alreadyTriggered else { return }
             alreadyTriggered = true
 
-            speakAck()
             DispatchQueue.main.async { self.orbState = .triggered }
 
             // Collect what comes after "hey lumen" as the question.
@@ -152,7 +164,11 @@ final class LUMENService: ObservableObject {
                     let insight = LUMENInsight(question: question, answer: answer)
                     self.insights.insert(insight, at: 0)
                     if self.isVoiceEnabled {
-                        Task { await self.speak(text: answer) }
+                        // Say "I'm on it." then read the answer
+                        Task {
+                            await self.speak(text: "I'm on it.")
+                            await self.speak(text: answer)
+                        }
                     } else {
                         // No speech — return to listening shortly.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
@@ -262,17 +278,42 @@ final class LUMENService: ObservableObject {
     private lazy var audioPlayerDelegate: AudioPlayerEndDelegate = AudioPlayerEndDelegate()
 
     // Quick spoken acknowledgement when the trigger fires, before the answer is ready.
+    // Called immediately when user taps the orb to wake LUMEN.
+    func speakWake() {
+        guard isVoiceEnabled else { return }
+        Task { await speak(text: "Yes.") }
+    }
+
+    // Called just before delivering the answer.
     func speakAck() {
         guard isVoiceEnabled else { return }
-        Task { await speak(text: "On it.") }
+        Task { await speak(text: "I'm on it.") }
     }
 
     func dismissResponse() {
         isShowingResponse = false
     }
 
+    // Called when user taps the orb during recording.
+    // Plays "Yes." and waits for them to speak their question.
+    func orbTapped(currentTranscript: String) {
+        guard orbState == .listening else { return }  // only wake when idle-listening
+        isAwake = true
+        wakeTranscriptLength = currentTranscript.count  // mark where question starts
+        orbState = .triggered
+        speakWake()  // British guy says "Yes."
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            if self.isAwake { self.orbState = .listening }
+        }
+    }
+
+    // Transcript length at the moment the orb was tapped — question is everything after.
+    private var wakeTranscriptLength: Int = 0
+
     func reset() {
         alreadyTriggered = false
+        isAwake = false
+        wakeTranscriptLength = 0
         lastProcessedWordCount = 0
         captureNextSentence = false
         questionBuffer = ""

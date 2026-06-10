@@ -20,7 +20,7 @@ enum Config {
            !id.isEmpty, !id.hasPrefix("$(") {
             return id
         }
-        return "EXAVITQu4vr4xnSDxMaL" // Bella — fallback default
+        return "onwK4e9ZLuTAKqWW03F9" // Daniel — British male broadcaster
     }()
 
     // MARK: Anthropic / Claude

@@ -276,12 +276,22 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     .tracking(4)
                     .padding(.bottom, LM.Space.xl)
 
-                // Live orb — SAME speechService that is actively listening.
+                // Live orb — tap to wake LUMEN AI.
                 LUMENOrbView(
                     state: lumen.orbState,
                     speechService: speechService,
                     size: 180
                 )
+                .onTapGesture {
+                    lumen.orbTapped(currentTranscript: speechService.transcript)
+                }
+
+                // Tap hint label
+                Text(lumen.isAwake ? "Listening for your question..." : "Tap orb to ask LUMEN")
+                    .font(LM.Fonts.mono(10, weight: .bold))
+                    .foregroundColor(lumen.isAwake ? LM.Colors.green.opacity(0.9) : LM.Colors.textTertiary.opacity(0.6))
+                    .tracking(1)
+                    .padding(.top, 4)
 
                 LUMENWaveformView(speechService: speechService)
                     .padding(.horizontal, LM.Space.xl)
