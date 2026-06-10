@@ -30,8 +30,8 @@ class LUMENService: ObservableObject {
     @Published var isProcessing: Bool = false
     
     // Trigger detection
-    private let triggerWord = "hey lumen"
-    private var lastTranscript: String = ""
+    private let triggerPhrase = "hey lumen"
+    private var lastProcessedWordCount: Int = 0   // how many words we've already scanned
     private var captureNextSentence: Bool = false
     private var pendingQuestion: String = ""
     private var questionBuffer: String = ""
@@ -59,17 +59,22 @@ class LUMENService: ObservableObject {
     }
     
     // MARK: - Transcript Processing (called every time transcript updates)
+    // transcript is the FULL cumulative text from SpeechRecognizerService (never resets).
     func processTranscript(_ transcript: String, fullContext: String) {
-        let newText = String(transcript.dropFirst(lastTranscript.count)).lowercased().trimmingCharacters(in: .whitespaces)
-        lastTranscript = transcript
-        
+        // Break into words and only look at NEW words since last call
+        let allWords = transcript.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        guard allWords.count > lastProcessedWordCount else { return }
+
+        let newWords = Array(allWords[lastProcessedWordCount...])
+        lastProcessedWordCount = allWords.count
+
+        let newText = newWords.joined(separator: " ").lowercased()
         guard !newText.isEmpty else { return }
-        
+
         if captureNextSentence {
             questionBuffer += " " + newText
-            // Wait for a natural pause — sentence ends with punctuation or silence of ~2s
-            // We detect question end by checking if buffer has enough content and newText ends with punctuation
             let trimmed = questionBuffer.trimmingCharacters(in: .whitespaces)
+            // Collect until we have a meaningful sentence (8+ chars of content)
             if trimmed.count > 8 {
                 pendingQuestion = trimmed
                 captureNextSentence = false
@@ -78,19 +83,26 @@ class LUMENService: ObservableObject {
             }
             return
         }
-        
-        // Detect trigger word
-        if newText.contains(triggerWord) {
-            captureNextSentence = true
-            triggerDetectedAt = Date()
-            questionBuffer = ""
-            
-            // Flash the orb
-            DispatchQueue.main.async {
-                self.orbState = .triggered
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    self.orbState = .listening
+
+        // Detect "hey lumen" in the new words using a sliding 2-word window
+        // This catches the phrase even if split across recognition chunks
+        let windowWords = newWords.map { $0.lowercased()
+            .trimmingCharacters(in: .punctuationCharacters) }
+        for i in 0..<windowWords.count {
+            let twoWord = i + 1 < windowWords.count
+                ? windowWords[i] + " " + windowWords[i + 1]
+                : windowWords[i]
+            if twoWord == triggerPhrase || windowWords[i] == triggerPhrase {
+                captureNextSentence = true
+                triggerDetectedAt = Date()
+                questionBuffer = ""
+                DispatchQueue.main.async {
+                    self.orbState = .triggered
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        self.orbState = .listening
+                    }
                 }
+                return
             }
         }
     }
@@ -225,7 +237,7 @@ class LUMENService: ObservableObject {
     }
     
     func reset() {
-        lastTranscript = ""
+        lastProcessedWordCount = 0
         captureNextSentence = false
         questionBuffer = ""
         pendingQuestion = ""

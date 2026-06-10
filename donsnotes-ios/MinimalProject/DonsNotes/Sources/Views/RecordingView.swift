@@ -267,14 +267,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     }
 
                     // Waveform arcs under orb
-                    HStack(spacing: 3) {
-                        ForEach(0..<32) { i in
-                            LUMENWaveBar(index: i, amplitude: recorder.audioLevel)
-                        }
-                    }
-                    .frame(height: 50)
-                    .padding(.horizontal, LM.Space.xl)
-                    .padding(.top, LM.Space.lg)
+                    LUMENWaveformView(amplitude: recorder.audioLevel)
+                        .padding(.horizontal, LM.Space.xl)
+                        .padding(.top, LM.Space.lg)
 
                     Spacer()
 
@@ -428,37 +423,4 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 }
 
-// MARK: - LUMEN Wave Bar (amplitude-reactive)
-struct LUMENWaveBar: View {
-    let index: Int
-    let amplitude: Float
-    @State private var height: CGFloat = 6
-
-    private var targetHeight: CGFloat {
-        let pattern: [CGFloat] = [10, 20, 35, 25, 15, 40, 20, 30, 45, 18,
-                                   38, 28, 16, 44, 12, 32, 24, 42, 10, 22,
-                                   36, 16, 44, 20, 30, 14, 38, 26, 10, 24, 40, 18]
-        let base = pattern[index % pattern.count]
-        return base * (0.4 + CGFloat(amplitude) * 0.6)
-    }
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(
-                LinearGradient(
-                    colors: [LM.Colors.cyan, LM.Colors.blue.opacity(0.6)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .frame(width: 3, height: height)
-            .onAppear {
-                withAnimation(Animation.easeInOut(duration: Double.random(in: 0.3...0.7)).repeatForever(autoreverses: true).delay(Double(index) * 0.04)) {
-                    height = targetHeight
-                }
-            }
-            .onChange(of: amplitude) { _, _ in
-                withAnimation(.easeOut(duration: 0.1)) { height = targetHeight }
-            }
-    }
-}
+// LUMENWaveBar and LUMENWaveformView are defined in LUMENOrbView.swift

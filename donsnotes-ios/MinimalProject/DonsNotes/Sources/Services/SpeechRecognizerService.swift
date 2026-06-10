@@ -9,13 +9,21 @@ class SpeechRecognizerService: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
 
-    @Published var transcript = ""
+    // fullTranscript: the entire session text, never reset.
+    // currentSegment: the running text from the current recognition window.
+    // Callers read fullTranscript for trigger detection.
+    @Published var transcript = ""         // alias for fullTranscript — views & LUMEN read this
     @Published var isListening = false
     @Published var error: String?
+
+    private var fullTranscript: String = ""   // cumulative across all restart windows
+    private var segmentBase: String = ""      // what fullTranscript was when this window started
 
     // MARK: - Public API
 
     func startListening() {
+        fullTranscript = ""
+        segmentBase = ""
         SFSpeechRecognizer.requestAuthorization { [weak self] status in
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -43,9 +51,7 @@ class SpeechRecognizerService: ObservableObject {
     func stopListening() {
         guard isListening else { return }
         audioEngine.stop()
-        // Remove tap before stopping to avoid crash on re-use
-        let node = audioEngine.inputNode
-        node.removeTap(onBus: 0)
+        audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         recognitionTask?.cancel()
@@ -56,7 +62,7 @@ class SpeechRecognizerService: ObservableObject {
     // MARK: - Internal
 
     private func beginRecording() throws {
-        // Always fully tear down before re-starting
+        // Tear down any running session
         if audioEngine.isRunning {
             audioEngine.stop()
             audioEngine.inputNode.removeTap(onBus: 0)
@@ -66,7 +72,6 @@ class SpeechRecognizerService: ObservableObject {
         recognitionRequest = nil
 
         // Share the session that AudioRecorder already opened.
-        // Use .measurement mode + duckOthers so both audio paths coexist.
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement,
                                 options: [.duckOthers, .defaultToSpeaker])
@@ -74,7 +79,6 @@ class SpeechRecognizerService: ObservableObject {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
-        // Keep recognition alive for the whole meeting (iOS 17+)
         if #available(iOS 16, *) {
             request.addsPunctuation = true
         }
@@ -84,32 +88,48 @@ class SpeechRecognizerService: ObservableObject {
             throw SpeechError.recognizerUnavailable
         }
 
+        // Snapshot the full transcript before starting this window
+        let baseAtStart = fullTranscript
+
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, err in
             guard let self = self else { return }
+
             if let result = result {
-                DispatchQueue.main.async { self.transcript = result.bestTranscription.formattedString }
+                // Build rolling full transcript: everything before this window + current segment
+                let segmentText = result.bestTranscription.formattedString
+                let combined = baseAtStart.isEmpty
+                    ? segmentText
+                    : baseAtStart + " " + segmentText
+                DispatchQueue.main.async {
+                    self.fullTranscript = combined
+                    self.transcript = combined          // published property views/LUMEN observe
+                }
             }
-            // Only tear down on a hard final or non-recoverable error
+
             let isFinal = result?.isFinal ?? false
+
             if let err = err {
                 let nsErr = err as NSError
-                // Code 1110 = no speech — not a crash, just silence; restart quietly
                 if nsErr.code == 1110 {
+                    // Silence timeout — restart quietly, preserving fullTranscript
                     DispatchQueue.main.async {
                         if self.isListening { try? self.beginRecording() }
                     }
                 } else {
                     DispatchQueue.main.async {
-                        self.audioEngine.stop()
-                        self.audioEngine.inputNode.removeTap(onBus: 0)
+                        if self.audioEngine.isRunning {
+                            self.audioEngine.stop()
+                            self.audioEngine.inputNode.removeTap(onBus: 0)
+                        }
                         self.recognitionRequest = nil
                         self.recognitionTask = nil
                         self.isListening = false
                     }
                 }
             } else if isFinal {
-                // Auto-restart to keep listening for full meeting
+                // Commit the final text of this window into fullTranscript, then restart
                 DispatchQueue.main.async {
+                    // fullTranscript is already up-to-date from the result handler above
                     if self.isListening { try? self.beginRecording() }
                 }
             }
