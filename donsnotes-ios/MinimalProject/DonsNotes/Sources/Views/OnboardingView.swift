@@ -209,7 +209,7 @@ struct OnboardingView: View {
         }
         .onChange(of: currentPage) { _, _ in
             triggerPageChange()
-        })
+        }
     }
 
     // MARK: - Page Content

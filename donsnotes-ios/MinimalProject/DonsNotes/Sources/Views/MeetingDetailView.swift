@@ -427,7 +427,7 @@ struct LUMENPlaybackBar: View {
                 withAnimation(p ? Animation.easeInOut(duration: Double.random(in: 0.4...0.9)).repeatForever(autoreverses: true) : .easeOut(duration: 0.3)) {
                     animH = p ? base * CGFloat.random(in: 0.5...1.6) : base
                 }
-            })
+            }
     }
 }
 

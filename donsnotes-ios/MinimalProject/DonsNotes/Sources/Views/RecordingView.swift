@@ -439,6 +439,6 @@ struct LUMENWaveBar: View {
             }
             .onChange(of: amplitude) { _, _ in
                 withAnimation(.easeOut(duration: 0.1)) { height = targetHeight }
-            })
+            }
     }
 }
