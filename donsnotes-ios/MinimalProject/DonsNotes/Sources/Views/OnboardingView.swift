@@ -207,7 +207,7 @@ struct OnboardingView: View {
         .onAppear {
             startAnimations()
         }
-        .onChange(of: currentPage, perform: { _ in
+        .onChange(of: currentPage) { _, _ in
             triggerPageChange()
         })
     }

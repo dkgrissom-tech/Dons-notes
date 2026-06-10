@@ -131,8 +131,8 @@ struct LUMENOrbView: View {
             }
         }
         .onAppear { startAnimations() }
-        .onChange(of: state, perform: { newState in handleStateChange(newState) })
-        .onChange(of: amplitude, perform: { _ in updateAmplitude() })
+        .onChange(of: state) { _, newState in handleStateChange(newState) }
+        .onChange(of: amplitude) { _, _ in updateAmplitude() }
         .frame(width: size * 1.8, height: size * 1.8)
     }
 

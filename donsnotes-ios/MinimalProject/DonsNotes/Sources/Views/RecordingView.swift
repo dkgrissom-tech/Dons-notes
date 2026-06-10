@@ -216,7 +216,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .padding(.bottom, LM.Space.xl)
             }
         }
-        .onChange(of: speechService.transcript, perform: { v in parseTranscript(v) })
+        .onChange(of: speechService.transcript) { _, v in parseTranscript(v) }
     }
 
     // MARK: - Recording Section
@@ -437,7 +437,7 @@ struct LUMENWaveBar: View {
                     height = targetHeight
                 }
             }
-            .onChange(of: amplitude, perform: { _ in
+            .onChange(of: amplitude) { _, _ in
                 withAnimation(.easeOut(duration: 0.1)) { height = targetHeight }
             })
     }
