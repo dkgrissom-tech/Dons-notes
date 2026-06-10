@@ -4,76 +4,70 @@ import SwiftUI
 enum LUMENOrbState {
     case idle
     case listening
-    case triggered
-    case responding
+    case triggered      // brief flash when "Hey Lumen" fires
+    case responding     // thinking / speaking
     case dormant
 }
 
-// MARK: - Orb computed values (plain struct, NOT a ViewBuilder)
+// MARK: - Orb computed values (plain struct, NOT a @ViewBuilder)
+// All per-frame math lives here so the SwiftUI body stays declarative.
+private struct Ripple: Identifiable {
+    let id: Int
+    let scale: CGFloat
+    let opacity: Double
+}
+
 private struct OrbValues {
-    let coreScale:  CGFloat
-    let glowOp:     Double
-    let r1Op:       Double
-    let r2Op:       Double
-    let r3Op:       Double
-    let r1Scale:    CGFloat
-    let r2Scale:    CGFloat
-    let r3Scale:    CGFloat
-    let ampBoost:   CGFloat
+    let scale: CGFloat            // core orb scale (base pulse * amp boost)
+    let color: Color              // state-driven core/ring color
+    let glow: Double              // ambient glow opacity 0...1
+    let midRingOpacity: Double
+    let ripples: [Ripple]         // 3 ripples, fully computed (scale + opacity)
 
-    init(state: LUMENOrbState, amp: CGFloat, t: Double,
-         triggerScale: CGFloat, triggerFlash: Double) {
-        let breath      = CGFloat(sin(t * 0.75))
-        let breathScale = 1.0 + breath * 0.06
-
+    init(state: LUMENOrbState, amp: CGFloat, t: Double, pulse: Bool) {
+        // Base pulse range per state (matches Jarvis: idle 1.0–1.05, active 1.0–1.12)
+        let activeRange: CGFloat
         switch state {
-        case .idle:
-            coreScale = breathScale
-            glowOp    = Double(0.28 + breath * 0.14)
-            r1Op      = Double(0.38 + breath * 0.16)
-            r2Op      = Double(0.18 + breath * 0.10)
-            r3Op      = Double(0.08 + breath * 0.06)
-            r1Scale   = 1.0 + CGFloat(sin(t * 1.10)) * 0.030
-            r2Scale   = 1.0 + CGFloat(sin(t * 0.85 + 1.0)) * 0.025
-            r3Scale   = 1.0 + CGFloat(sin(t * 0.65 + 2.0)) * 0.018
-            ampBoost  = 0
+        case .idle, .dormant:                 activeRange = 0.05
+        case .listening, .triggered, .responding: activeRange = 0.12
+        }
+        // withAnimation drives `pulse` between false/true; map to the scale range.
+        let basePulse = 1.0 + (pulse ? activeRange : 0.0)
 
-        case .listening:
-            coreScale = 1.0 + amp * 0.22
-            glowOp    = Double(0.45 + amp * 0.55)
-            r1Op      = Double(0.50 + amp * 0.50)
-            r2Op      = Double(0.22 + amp * 0.38)
-            r3Op      = Double(0.10 + amp * 0.20)
-            r1Scale   = 1.0 + amp * 0.14 + CGFloat(sin(t * 8.0)) * amp * 0.04
-            r2Scale   = 1.0 + amp * 0.09 + CGFloat(sin(t * 6.5 + 0.5)) * amp * 0.03
-            r3Scale   = 1.0 + amp * 0.05 + CGFloat(sin(t * 5.0 + 1.2)) * amp * 0.02
-            ampBoost  = amp * 50   // pixels
+        // audioLevel boost rides on top of the base pulse (only when meaningful)
+        let ampBoost: CGFloat = amp > 0.05 ? (amp * 0.3) : 0.0
+        self.scale = basePulse + ampBoost
 
-        case .triggered:
-            coreScale = triggerScale
-            glowOp    = 0.95
-            r1Op      = 1.0;  r2Op = 0.72;  r3Op = 0.42
-            r1Scale   = 1.10; r2Scale = 1.06; r3Scale = 1.03
-            ampBoost  = 0
+        // Color by state (matches Jarvis palette)
+        switch state {
+        case .idle:       self.color = LM.Colors.cyanDim
+        case .listening:  self.color = LM.Colors.green
+        case .triggered:  self.color = LM.Colors.cyanBright
+        case .responding: self.color = LM.Colors.purple
+        case .dormant:    self.color = LM.Colors.cyan.opacity(0.25)
+        }
 
-        case .responding:
-            let pulse = 1.0 + CGFloat(sin(t * 2.5)) * 0.04
-            coreScale = pulse
-            glowOp    = 0.70 + sin(t * 1.8) * 0.12
-            r1Op      = 0.72 + sin(t * 2.1) * 0.18
-            r2Op      = 0.38 + sin(t * 1.6) * 0.12
-            r3Op      = 0.18 + sin(t * 1.2) * 0.07
-            r1Scale   = 1.0 + CGFloat(sin(t * 1.10)) * 0.030
-            r2Scale   = 1.0 + CGFloat(sin(t * 0.90 + 1.0)) * 0.025
-            r3Scale   = 1.0 + CGFloat(sin(t * 0.70 + 2.0)) * 0.018
-            ampBoost  = 0
+        // Ambient glow strength
+        switch state {
+        case .idle:       self.glow = 0.30 + Double(amp) * 0.30
+        case .listening:  self.glow = 0.55 + Double(amp) * 0.45
+        case .triggered:  self.glow = 0.95
+        case .responding: self.glow = 0.70
+        case .dormant:    self.glow = 0.12
+        }
 
-        case .dormant:
-            coreScale = 0.95
-            glowOp    = 0.12
-            r1Op      = 0.10; r2Op = 0.06; r3Op = 0.03
-            r1Scale   = 1.0;  r2Scale = 1.0;  r3Scale = 1.0
-            ampBoost  = 0
+        self.midRingOpacity = 0.35 + self.glow * 0.4
+
+        // 3 expanding ripple rings — staggered phase offsets, period 2s (matches CSS ripple).
+        // Fully compute scale (0.8 → 2.5) and opacity (0.8 → 0) here so the view does no math.
+        let period = 2.0
+        let delays = [0.0, 0.6, 1.2]   // staggered like .ripple:nth-child(2)/(3)
+        self.ripples = delays.enumerated().map { idx, d in
+            var phase = ((t - d).truncatingRemainder(dividingBy: period)) / period
+            if phase < 0 { phase += 1.0 }
+            let s = 0.8 + CGFloat(phase) * (2.5 - 0.8)
+            let o = (1.0 - phase) * 0.8
+            return Ripple(id: idx, scale: s, opacity: o)
         }
     }
 }
@@ -81,159 +75,113 @@ private struct OrbValues {
 // MARK: - LUMEN Orb View
 struct LUMENOrbView: View {
     let state: LUMENOrbState
-    @ObservedObject var speechService: SpeechRecognizerService   // direct subscription → re-renders at 20 fps
-    var size: CGFloat = 180
+    @ObservedObject var speechService: SpeechRecognizerService
+    var size: CGFloat = 160
 
-    @State private var triggerFlash: Double = 0
-    @State private var triggerScale: CGFloat = 1.0
+    @State private var pulse: Bool = false
 
-    private var coreSize: CGFloat { size * 0.38 }
+    private var coreSize: CGFloat { size * 0.42 }
 
     var body: some View {
-        // ── Verified correct: amp IS read INSIDE the TimelineView closure ──────────
-        //
-        // TimelineView(.animation) redraws every frame (~60 fps). Each frame the closure
-        // runs fresh and calls `speechService.audioLevel` to read the current value.
-        // @ObservedObject on speechService also triggers a SwiftUI body re-render whenever
-        // audioLevel publishes, but since TimelineView already redraws every frame that
-        // re-render is redundant (harmless). The critical point is that `amp` is computed
-        // INSIDE the TimelineView closure — NOT outside it — so every frame gets the latest
-        // audioLevel without any stale-capture issue.
+        // TimelineView(.animation) redraws every frame so the ripple phase (driven by the
+        // timeline date) and the latest audioLevel both stay current with no timer fight.
+        // `pulse` is animated separately by withAnimation(.repeatForever) and toggles the
+        // base scale between the idle/active range.
         TimelineView(.animation) { timeline in
-            let t   = timeline.date.timeIntervalSinceReferenceDate
-            let amp = CGFloat(speechService.audioLevel)   // ← inside TimelineView — correct
-            let v   = OrbValues(state: state, amp: amp, t: t,
-                                triggerScale: triggerScale,
-                                triggerFlash: triggerFlash)
-            let arcDeg  = (t * 180.0).truncatingRemainder(dividingBy: 360)
-            let arcDeg2 = (360 - t * 120.0).truncatingRemainder(dividingBy: 360)
-
-            ZStack {
-                // Outer ambient glow
-                Circle()
-                    .fill(RadialGradient(
-                        colors: [LM.Colors.cyan.opacity(v.glowOp * 0.55), .clear],
-                        center: .center, startRadius: 0, endRadius: size * 0.9
-                    ))
-                    .frame(width: size * 1.8, height: size * 1.8)
-
-                // Ring 3 — outermost
-                Circle()
-                    .stroke(LM.Colors.cyan.opacity(v.r3Op), lineWidth: 1)
-                    .frame(width: size + 60 + v.ampBoost * 0.55,
-                           height: size + 60 + v.ampBoost * 0.55)
-                    .scaleEffect(v.r3Scale)
-
-                // HUD tick marks at 4 cardinal points
-                ForEach([0.0, 90.0, 180.0, 270.0], id: \.self) { angle in
-                    Rectangle()
-                        .fill(LM.Colors.cyan.opacity(v.r3Op * 1.6))
-                        .frame(width: 2, height: 7)
-                        .offset(y: -(size * 0.5 + 60 + v.ampBoost * 0.27 + 3.5))
-                        .rotationEffect(.degrees(angle))
-                        .scaleEffect(v.r3Scale)
-                }
-
-                // Ring 2 — mid
-                Circle()
-                    .stroke(LM.Colors.cyan.opacity(v.r2Op), lineWidth: 1.5)
-                    .frame(width: size + 30 + v.ampBoost * 0.38,
-                           height: size + 30 + v.ampBoost * 0.38)
-                    .scaleEffect(v.r2Scale)
-
-                // Ring 1 — inner
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [LM.Colors.cyan.opacity(v.r1Op),
-                                     LM.Colors.blue.opacity(v.r1Op * 0.5)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 2
-                    )
-                    .frame(width: size + v.ampBoost * 0.28,
-                           height: size + v.ampBoost * 0.28)
-                    .scaleEffect(v.r1Scale)
-
-                // Extra inner glow when speaking loudly
-                if state == .listening && amp > 0.08 {
-                    Circle()
-                        .stroke(LM.Colors.cyanBright.opacity(Double(amp) * 0.85), lineWidth: 3)
-                        .frame(width: size * 0.70, height: size * 0.70)
-                        .blur(radius: 5)
-                }
-
-                // Responding arcs
-                if state == .responding {
-                    Circle()
-                        .trim(from: 0.0, to: 0.35)
-                        .stroke(LM.Colors.cyan,
-                                style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .frame(width: size + 14, height: size + 14)
-                        .rotationEffect(.degrees(arcDeg - 90))
-
-                    Circle()
-                        .trim(from: 0.55, to: 0.75)
-                        .stroke(LM.Colors.cyanBright.opacity(0.65),
-                                style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                        .frame(width: size + 24, height: size + 24)
-                        .rotationEffect(.degrees(arcDeg2 - 90))
-                }
-
-                // Core orb
-                ZStack {
-                    Circle()
-                        .fill(RadialGradient(
-                            colors: [
-                                LM.Colors.cyanBright.opacity(0.95),
-                                LM.Colors.cyan.opacity(0.65),
-                                LM.Colors.blue.opacity(0.40),
-                                LM.Colors.deep
-                            ],
-                            center: UnitPoint(x: 0.35, y: 0.3),
-                            startRadius: 0,
-                            endRadius: coreSize * 0.9
-                        ))
-                        .frame(width: coreSize + v.ampBoost * 0.2,
-                               height: coreSize + v.ampBoost * 0.2)
-
-                    // Specular highlight
-                    Ellipse()
-                        .fill(RadialGradient(
-                            colors: [Color.white.opacity(0.78), .clear],
-                            center: .center, startRadius: 0,
-                            endRadius: coreSize * 0.3
-                        ))
-                        .frame(width: coreSize * 0.45, height: coreSize * 0.3)
-                        .offset(x: -coreSize * 0.15, y: -coreSize * 0.20)
-
-                    Text("LUMEN")
-                        .font(LM.Fonts.mono(coreSize * 0.13, weight: .bold))
-                        .foregroundColor(.white.opacity(0.55))
-                        .tracking(2)
-                }
-                .scaleEffect(v.coreScale)
-
-                // Trigger flash
-                if triggerFlash > 0 {
-                    Circle()
-                        .fill(Color.white.opacity(triggerFlash))
-                        .frame(width: size * 1.5, height: size * 1.5)
-                }
-            }
-        }
-        .onChange(of: state) { _, newState in    // iOS 17+ two-parameter form
-            guard newState == .triggered else { return }
-            triggerFlash = 0.90
-            triggerScale = 1.18
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                withAnimation(.easeOut(duration: 0.55)) {
-                    triggerFlash = 0
-                    triggerScale = 1.0
-                }
-            }
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let amp = CGFloat(speechService.audioLevel)
+            let v = OrbValues(state: state, amp: amp, t: t, pulse: pulse)
+            canvas(v: v, t: t)
         }
         .frame(width: size * 1.8, height: size * 1.8)
+        .onAppear { startPulse() }
+        .onChange(of: state) { _, _ in startPulse() }
+    }
+
+    // Animate the base breathing pulse. Re-arm on appear and on state change so the
+    // duration matches the active state (faster when listening/speaking).
+    private func startPulse() {
+        pulse = false
+        let duration: Double
+        switch state {
+        case .idle, .dormant: duration = 1.5    // pulse-slow (3s round trip)
+        case .listening:      duration = 0.4    // pulse-fast 0.8s round trip
+        case .triggered:      duration = 0.4
+        case .responding:     duration = 0.25   // speaking 0.5s round trip
+        }
+        withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
+            pulse = true
+        }
+    }
+
+    @ViewBuilder
+    private func canvas(v: OrbValues, t: Double) -> some View {
+        ZStack {
+            // Outer ambient glow
+            Circle()
+                .fill(RadialGradient(
+                    colors: [v.color.opacity(v.glow * 0.55), .clear],
+                    center: .center, startRadius: 0, endRadius: size * 0.9
+                ))
+                .frame(width: size * 1.8, height: size * 1.8)
+
+            // 3 expanding ripple rings (CSS @keyframes ripple port).
+            ForEach(v.ripples) { r in
+                Circle()
+                    .stroke(v.color.opacity(r.opacity), lineWidth: 1)
+                    .frame(width: size, height: size)
+                    .scaleEffect(r.scale)
+            }
+
+            // Mid structural ring
+            Circle()
+                .stroke(v.color.opacity(v.midRingOpacity), lineWidth: 1.5)
+                .frame(width: size, height: size)
+                .scaleEffect(v.scale)
+
+            // Responding rotating arc
+            if state == .responding {
+                let arcDeg = (t * 160.0).truncatingRemainder(dividingBy: 360)
+                Circle()
+                    .trim(from: 0.0, to: 0.35)
+                    .stroke(v.color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .frame(width: size + 16, height: size + 16)
+                    .rotationEffect(.degrees(arcDeg - 90))
+            }
+
+            // Core orb
+            ZStack {
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [
+                            v.color.opacity(0.95),
+                            v.color.opacity(0.60),
+                            LM.Colors.blue.opacity(0.35),
+                            LM.Colors.deep
+                        ],
+                        center: UnitPoint(x: 0.35, y: 0.30),
+                        startRadius: 0,
+                        endRadius: coreSize * 0.9
+                    ))
+                    .frame(width: coreSize, height: coreSize)
+
+                // Specular highlight
+                Ellipse()
+                    .fill(RadialGradient(
+                        colors: [Color.white.opacity(0.78), .clear],
+                        center: .center, startRadius: 0, endRadius: coreSize * 0.3
+                    ))
+                    .frame(width: coreSize * 0.45, height: coreSize * 0.30)
+                    .offset(x: -coreSize * 0.15, y: -coreSize * 0.20)
+
+                Text("LUMEN")
+                    .font(LM.Fonts.mono(coreSize * 0.13, weight: .bold))
+                    .foregroundColor(.white.opacity(0.55))
+                    .tracking(2)
+            }
+            .scaleEffect(v.scale)
+            .shadow(color: v.color.opacity(v.glow), radius: 18 + v.glow * 14)
+        }
     }
 }
 
@@ -245,14 +193,14 @@ struct LUMENWaveBar: View {
 
     var body: some View {
         TimelineView(.animation) { timeline in
-            let t     = timeline.date.timeIntervalSinceReferenceDate
-            let amp   = CGFloat(amplitude)
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let amp = CGFloat(amplitude)
             let phase = Double(index) / Double(totalBars) * .pi * 2.0
 
-            let idleH  = 4 + 10 * CGFloat(0.5 + 0.5 * sin(t * 3.5 + phase))
+            let idleH = 4 + 10 * CGFloat(0.5 + 0.5 * sin(t * 3.5 + phase))
             let waveVar = 0.20 + 0.80 * abs(sin(t * 7.0 + phase))
             let activeH = 4 + 54 * amp * CGFloat(waveVar)
-            let height  = amp < 0.04 ? idleH : max(idleH, activeH)
+            let height = amp < 0.04 ? idleH : max(idleH, activeH)
 
             RoundedRectangle(cornerRadius: 3)
                 .fill(LinearGradient(

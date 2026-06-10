@@ -3,33 +3,38 @@ import Speech
 import AVFoundation
 import Combine
 
-/// Single owner of the AVAudioSession and AVAudioEngine for the entire recording session.
-/// Handles both live speech-to-text AND writing PCM audio to a .m4a file.
-/// AudioRecorder is no longer used — removing the dual-session conflict was the root fix.
-class SpeechRecognizerService: ObservableObject {
+/// SOLE owner of AVAudioSession and AVAudioEngine for the recording session.
+/// From ONE input tap it does three things:
+///   1. Feeds SFSpeechAudioBufferRecognitionRequest (live transcription)
+///   2. Computes RMS amplitude → publishes `audioLevel` (0.0...1.0) for the orb/waveform
+///   3. Writes PCM audio to a .m4a file for upload
+///
+/// AudioRecorder is a thin stub and must NOT touch the audio session — running a
+/// second AVAudioRecorder against the same input was the dual-driver conflict that
+/// produced silent taps (audioLevel stuck at 0, dead orb) and broke attendee audio.
+final class SpeechRecognizerService: ObservableObject {
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
 
-    @Published var transcript = ""
-    @Published var isListening = false
-    @Published var audioLevel: Float = 0
+    @Published var transcript: String = ""
+    @Published var isListening: Bool = false
+    @Published var audioLevel: Float = 0.0
+    @Published var recordingURL: URL? = nil
     @Published var error: String?
 
-    // Recording to file
-    @Published var recordingURL: URL?
     private var audioFile: AVAudioFile?
     private var recordingOutputURL: URL?
 
+    // Cumulative transcript that survives recognizer restarts (silence/final).
     private var fullTranscript: String = ""
-    private var segmentBase: String = ""
 
     // MARK: - Public API
 
     func startListening() {
         fullTranscript = ""
-        segmentBase = ""
+        transcript = ""
         recordingURL = nil
         recordingOutputURL = makeOutputURL()
 
@@ -59,7 +64,7 @@ class SpeechRecognizerService: ObservableObject {
 
     func stopListening() {
         guard isListening else { return }
-        audioEngine.stop()
+        if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionRequest = nil
@@ -67,7 +72,7 @@ class SpeechRecognizerService: ObservableObject {
         recognitionTask = nil
         isListening = false
         audioLevel = 0
-        // Close file — surface the URL for upload
+        // Close the file and surface its URL for upload.
         audioFile = nil
         if let url = recordingOutputURL {
             recordingURL = url
@@ -83,14 +88,14 @@ class SpeechRecognizerService: ObservableObject {
     }
 
     private func beginRecording() throws {
-        // ── Unconditional teardown — safe no-op if engine isn't running ──────────
+        // Unconditional teardown — safe no-op when nothing is running yet.
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
 
-        // ── One AVAudioSession for both recognition AND file write ────────────────
+        // ONE session for recognition AND file write.
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement,
                                 options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
@@ -105,6 +110,7 @@ class SpeechRecognizerService: ObservableObject {
             throw SpeechError.recognizerUnavailable
         }
 
+        // Snapshot the cumulative transcript so a restart appends rather than resets.
         let baseAtStart = fullTranscript
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, err in
@@ -124,7 +130,7 @@ class SpeechRecognizerService: ObservableObject {
             if let err = err {
                 let nsErr = err as NSError
                 if nsErr.code == 1110 {
-                    // Silence timeout — restart quietly
+                    // Silence timeout — restart quietly WITHOUT dropping isListening.
                     DispatchQueue.main.async {
                         if self.isListening { try? self.beginRecording() }
                     }
@@ -147,9 +153,8 @@ class SpeechRecognizerService: ObservableObject {
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Open AVAudioFile for writing — matches the engine's native input format
+        // Open the output file in the engine's native input format (AAC/.m4a).
         if let outputURL = recordingOutputURL {
-            // Convert to .m4a (AAC) settings
             let fileSettings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVSampleRateKey: inputFormat.sampleRate,
@@ -159,13 +164,15 @@ class SpeechRecognizerService: ObservableObject {
             audioFile = try? AVAudioFile(forWriting: outputURL, settings: fileSettings)
         }
 
+        // ALWAYS remove before install (done above too) — single tap, three jobs.
+        inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
-            // Feed speech recognizer
+            // 1. feed recognizer
             self.recognitionRequest?.append(buffer)
-            // Write to file
+            // 2. write to file
             try? self.audioFile?.write(from: buffer)
-            // RMS amplitude for orb + waveform
+            // 3. RMS amplitude → audioLevel
             guard let channelData = buffer.floatChannelData?[0] else { return }
             let frameCount = Int(buffer.frameLength)
             guard frameCount > 0 else { return }

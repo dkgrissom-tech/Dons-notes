@@ -1,25 +1,13 @@
 import SwiftUI
+import Speech
 import AVFoundation
 
-// ── BUILD 15: Root cause fix ─────────────────────────────────────────────────
-//
-// ROOT CAUSE: Two audio drivers fighting for the same input.
-// AudioRecorder used AVAudioRecorder which called AVAudioSession.setCategory()
-// and then grabbed the input. SpeechRecognizerService then called setCategory()
-// again and tried to install an AVAudioEngine tap on the SAME input node.
-// AVAudioEngine silently won the session but AVAudioRecorder had already
-// opened the hardware — the engine tap received silence. audioLevel = 0.
-// Orb and waveform never reacted. Speech recognition still worked (Apple's
-// speech framework has its own internal path) but the RMS amplitude path was dead.
-//
-// FIX: Eliminate AVAudioRecorder entirely. SpeechRecognizerService now owns
-// the AVAudioSession + AVAudioEngine and writes the audio file itself from
-// the same tap that feeds the recognizer and computes RMS. One driver, no conflict.
-//
-// RecordingView is now driven entirely by speechService:
-//   speechService.isListening  → replaces recorder.isRecording
-//   speechService.recordingURL → replaces recorder.recordingURL
-// AudioRecorder is kept as an empty stub so other files that import it compile.
+// Architecture:
+//   - SpeechRecognizerService is the SOLE owner of the audio session/engine while recording.
+//   - AudioRecorder is NOT used for recording (its second driver was the conflict bug).
+//   - The SAME speechService instance drives both recognition and the live orb/waveform.
+//   - Attendee voice entry uses a separate one-shot SFSpeechRecognizer (AttendeeVoiceInput),
+//     which only runs while NOT recording, so it never competes with the recording engine.
 
 struct RecordingView<T: APIServiceProtocol>: View {
     @ObservedObject var apiService: T
@@ -27,6 +15,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @ObservedObject var profileService = ProfileService.shared
     @StateObject var speechService = SpeechRecognizerService()
     @StateObject var lumen = LUMENService()
+    @StateObject private var voiceInput = AttendeeVoiceInput()
     @State private var attendees: [Attendee] = []
     @State private var newAttendeeEmail = ""
     @State private var newAttendeeName = ""
@@ -46,9 +35,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
             ZStack {
                 LM.Colors.void.ignoresSafeArea()
 
-                // Show setup screen when not recording and no file ready
-                // Show recording HUD when listening
-                // Show upload screen when recording stopped and file exists
                 if speechService.isListening {
                     recordingSection
                 } else if speechService.recordingURL != nil {
@@ -57,7 +43,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     setupSection
                 }
 
-                // LUMEN response overlay
                 if lumen.isShowingResponse {
                     VStack {
                         Spacer()
@@ -106,10 +91,16 @@ struct RecordingView<T: APIServiceProtocol>: View {
             .onAppear {
                 Task { await contactService.syncContacts(from: apiService) }
             }
-            // Transcript observer on stable outer view
-            .onReceive(speechService.$transcript) { t in
+            // Transcript observer on the stable OUTER view. The full cumulative transcript
+            // is passed both as the trigger source and as the Claude context.
+            .onReceive(speechService.$transcript) { transcript in
                 guard speechService.isListening else { return }
-                lumen.processTranscript(t, fullContext: t)
+                lumen.processTranscript(transcript, fullContext: transcript)
+            }
+            // Push dictated attendee text into the name field as it arrives.
+            .onChange(of: voiceInput.dictatedText) { _, newValue in
+                guard !newValue.isEmpty else { return }
+                newAttendeeName = newValue
             }
         }
         .preferredColorScheme(.dark)
@@ -120,7 +111,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
         ScrollView {
             VStack(spacing: LM.Space.lg) {
                 VStack(spacing: 10) {
-                    LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 100)
+                    LUMENOrbView(state: .idle, speechService: speechService, size: 100)
                     Text("NEW MEETING")
                         .font(LM.Fonts.mono(13, weight: .bold))
                         .foregroundColor(LM.Colors.cyan)
@@ -172,9 +163,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     VStack(spacing: 8) {
                         HStack(spacing: 8) {
                             LUMENTextField(placeholder: "Name", text: $newAttendeeName, icon: "person", contentType: .name, keyboard: .default)
-                            LUMENTextField(placeholder: "Email", text: $newAttendeeEmail, icon: "envelope", contentType: .emailAddress, keyboard: .emailAddress)
+                            // Voice dictation for the name — short one-shot, separate recognizer.
+                            Button(action: toggleVoiceDictation) {
+                                Image(systemName: voiceInput.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
+                                    .font(LM.Fonts.text(26))
+                                    .foregroundColor(voiceInput.isRecording ? LM.Colors.green : LM.Colors.cyan)
+                                    .symbolEffect(.pulse, isActive: voiceInput.isRecording)
+                            }
                         }
                         .padding(.horizontal, LM.Space.md)
+                        LUMENTextField(placeholder: "Email", text: $newAttendeeEmail, icon: "envelope", contentType: .emailAddress, keyboard: .emailAddress)
+                            .padding(.horizontal, LM.Space.md)
                         HStack(spacing: 10) {
                             LUMENButton(title: "Add", icon: "plus",
                                         style: (newAttendeeEmail.isEmpty || newAttendeeName.isEmpty) ? .ghost : .primary,
@@ -275,7 +274,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     .tracking(4)
                     .padding(.bottom, LM.Space.xl)
 
-                // Live orb — same speechService that is actively listening
+                // Live orb — SAME speechService that is actively listening.
                 LUMENOrbView(
                     state: lumen.orbState,
                     speechService: speechService,
@@ -323,7 +322,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
     private var uploadSection: some View {
         VStack(spacing: LM.Space.lg) {
             Spacer()
-            LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 120)
+            LUMENOrbView(state: .idle, speechService: speechService, size: 120)
 
             Text("RECORDING COMPLETE")
                 .font(LM.Fonts.mono(13, weight: .bold))
@@ -356,9 +355,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
     // MARK: - Actions
     func startRecording() {
-        speechService.startListening()
         lumen.reset()
-        lumen.orbState = .listening
+        speechService.startListening()
+        lumen.orbState = .listening      // set immediately so the orb is alive at once
         elapsedSeconds = 0
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             elapsedSeconds += 1
@@ -371,6 +370,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
         recordingTimer?.invalidate()
         recordingTimer = nil
         lumen.orbState = .idle
+    }
+
+    func toggleVoiceDictation() {
+        if voiceInput.isRecording {
+            voiceInput.stop()
+        } else {
+            voiceInput.start(seconds: 3)
+        }
     }
 
     func addAttendee() {
@@ -399,5 +406,93 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 await MainActor.run { isUploading = false }
             }
         }
+    }
+}
+
+// MARK: - Attendee Voice Input (one-shot dictation for the name field)
+// A self-contained short speech-to-text helper, completely separate from the recording
+// pipeline (SpeechRecognizerService). Only used while NOT recording, so the two never
+// contend for the audio input.
+final class AttendeeVoiceInput: NSObject, ObservableObject {
+    @Published var isRecording = false
+    @Published var dictatedText = ""
+
+    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private let engine = AVAudioEngine()
+    private var autoStopWork: DispatchWorkItem?
+
+    func start(seconds: TimeInterval) {
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            DispatchQueue.main.async {
+                guard let self = self, status == .authorized else { return }
+                self.beginCapture(seconds: seconds)
+            }
+        }
+    }
+
+    private func beginCapture(seconds: TimeInterval) {
+        guard let recognizer = recognizer, recognizer.isAvailable else { return }
+
+        // Tear down anything left over (defensive — should be idle here).
+        stop()
+        dictatedText = ""
+
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            return
+        }
+
+        let req = SFSpeechAudioBufferRecognitionRequest()
+        req.shouldReportPartialResults = true
+        request = req
+
+        task = recognizer.recognitionTask(with: req) { [weak self] result, _ in
+            guard let self = self else { return }
+            if let result = result {
+                DispatchQueue.main.async {
+                    self.dictatedText = result.bestTranscription.formattedString
+                }
+            }
+        }
+
+        let input = engine.inputNode
+        let format = input.outputFormat(forBus: 0)
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 2048, format: format) { [weak self] buffer, _ in
+            self?.request?.append(buffer)
+        }
+
+        engine.prepare()
+        do {
+            try engine.start()
+            isRecording = true
+        } catch {
+            stop()
+            return
+        }
+
+        // Auto-stop after the requested window.
+        let work = DispatchWorkItem { [weak self] in self?.stop() }
+        autoStopWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    func stop() {
+        autoStopWork?.cancel()
+        autoStopWork = nil
+        if engine.isRunning { engine.stop() }
+        engine.inputNode.removeTap(onBus: 0)
+        request?.endAudio()
+        request = nil
+        task?.cancel()
+        task = nil
+        isRecording = false
+        // Release the session so the recording pipeline can claim it later.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 }
