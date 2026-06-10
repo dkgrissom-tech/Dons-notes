@@ -284,7 +284,7 @@
                 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
                 CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 7L4H4W3H94;
-                CURRENT_PROJECT_VERSION = 5;
+                CURRENT_PROJECT_VERSION = 6;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = DonsNotes/Info.plist;
                 LD_RUNPATH_SEARCH_PATHS = (
@@ -307,7 +307,7 @@
                 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
                 CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 7L4H4W3H94;
-                CURRENT_PROJECT_VERSION = 5;
+                CURRENT_PROJECT_VERSION = 6;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = DonsNotes/Info.plist;
                 LD_RUNPATH_SEARCH_PATHS = (

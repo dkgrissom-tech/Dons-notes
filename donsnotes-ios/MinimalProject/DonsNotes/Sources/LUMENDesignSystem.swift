@@ -191,6 +191,9 @@ struct LUMENTextField: View {
     let placeholder: String
     @Binding var text: String
     var icon: String? = nil
+    var contentType: UITextContentType? = nil
+    var keyboard: UIKeyboardType = .default
+    var autocorrect: Bool = true
 
     var body: some View {
         HStack(spacing: 8) {
@@ -205,6 +208,10 @@ struct LUMENTextField: View {
                 }
                 .foregroundColor(LM.Colors.textPrimary)
                 .font(LM.Fonts.text(14))
+                .keyboardType(keyboard)
+                .textContentType(contentType)
+                .autocorrectionDisabled(keyboard == .emailAddress || keyboard == .URL)
+                .textInputAutocapitalization(keyboard == .emailAddress ? .never : .words)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)

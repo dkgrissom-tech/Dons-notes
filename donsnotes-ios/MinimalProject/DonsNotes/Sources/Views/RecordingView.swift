@@ -146,8 +146,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         .padding(.horizontal, LM.Space.md)
                     VStack(spacing: 8) {
                         HStack(spacing: 8) {
-                            LUMENTextField(placeholder: "Name", text: $newAttendeeName, icon: "person")
-                            LUMENTextField(placeholder: "Email", text: $newAttendeeEmail, icon: "envelope")
+                            LUMENTextField(placeholder: "Name", text: $newAttendeeName, icon: "person", contentType: .name, keyboard: .default)
+                            LUMENTextField(placeholder: "Email", text: $newAttendeeEmail, icon: "envelope", contentType: .emailAddress, keyboard: .emailAddress)
                         }
                         .padding(.horizontal, LM.Space.md)
                         HStack(spacing: 10) {
@@ -196,22 +196,19 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 Spacer(minLength: 20)
 
                 // LUMEN tip
-                if !attendees.isEmpty {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
-                        Text("Say \"Hey Lumen\" during the meeting to ask AI a question")
-                            .font(LM.Fonts.text(12))
-                            .foregroundColor(LM.Colors.textTertiary)
-                    }
-                    .padding(.horizontal, LM.Space.lg)
-                    .multilineTextAlignment(.center)
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
+                    Text("Say \"Hey Lumen\" during the meeting to ask AI a question")
+                        .font(LM.Fonts.text(12))
+                        .foregroundColor(LM.Colors.textTertiary)
                 }
+                .padding(.horizontal, LM.Space.lg)
+                .multilineTextAlignment(.center)
 
                 // Start button
-                LUMENButton(title: "Start Recording", icon: "mic.fill", style: attendees.isEmpty ? .ghost : .primary) {
+                LUMENButton(title: "Start Recording", icon: "mic.fill", style: .primary) {
                     startRecording()
                 }
-                .disabled(attendees.isEmpty)
                 .padding(.horizontal, LM.Space.md)
                 .padding(.bottom, LM.Space.xl)
             }
@@ -386,13 +383,36 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 
     func parseTranscript(_ text: String) {
-        let parts = text.components(separatedBy: .whitespacesAndNewlines)
+        // Split on whitespace, strip punctuation that speech recognition adds
+        let raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokens = raw.components(separatedBy: .whitespaces).map {
+            $0.trimmingCharacters(in: CharacterSet.punctuationCharacters)
+        }.filter { !$0.isEmpty }
+
+        var detectedEmail: String? = nil
         var nameParts: [String] = []
-        for part in parts {
-            if part.contains("@") { newAttendeeEmail = part.lowercased() }
-            else if !part.isEmpty { nameParts.append(part) }
+
+        for token in tokens {
+            // An email token contains @ and a dot after the @
+            let lower = token.lowercased()
+            if lower.contains("@") && lower.contains(".") {
+                detectedEmail = lower
+            } else {
+                // Only add to name if it doesn't look like a domain fragment
+                if !lower.hasPrefix("@") && !lower.hasSuffix(".com") && !lower.hasSuffix(".net") {
+                    nameParts.append(token)
+                }
+            }
         }
-        if !nameParts.isEmpty { newAttendeeName = nameParts.joined(separator: " ") }
+
+        // Only update fields when we have clear signal — don't overwrite what user typed
+        if let email = detectedEmail, newAttendeeEmail.isEmpty {
+            newAttendeeEmail = email
+        }
+        if !nameParts.isEmpty, newAttendeeName.isEmpty {
+            // Take first 3 tokens max as name (avoid dumping whole transcript)
+            newAttendeeName = nameParts.prefix(3).joined(separator: " ")
+        }
     }
 
     func uploadMeeting(url: URL) {

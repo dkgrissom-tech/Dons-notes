@@ -6,59 +6,71 @@ class AudioRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published var isRecording = false
     @Published var recordingURL: URL?
     @Published var audioLevel: Float = 0
-    
+
     private var meteringTimer: Timer?
-    
+
     func startRecording() {
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playAndRecord, mode: .default)
-            try session.setActive(true)
-            
+            // Use .measurement mode so SpeechRecognizerService can share the same
+            // session without an AVAudioSession category conflict crash.
+            try session.setCategory(.playAndRecord, mode: .measurement,
+                                    options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+
             let settings: [String: Any] = [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVSampleRateKey: 44100,
                 AVNumberOfChannelsKey: 1,
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
-            
-            let fileName = "recording_\(Date().timeIntervalSince1970).m4a"
-            let path = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(fileName)
-            
+
+            let fileName = "recording_\(Int(Date().timeIntervalSince1970)).m4a"
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let path = docs.appendingPathComponent(fileName)
+
             audioRecorder = try AVAudioRecorder(url: path, settings: settings)
             audioRecorder?.delegate = self
             audioRecorder?.isMeteringEnabled = true
             audioRecorder?.record()
+
             isRecording = true
-            recordingURL = path
-            
+            recordingURL = nil   // Clear any previous URL — only set on stop
+
             startMetering()
         } catch {
-            print("Could not start recording: \(error)")
+            print("AudioRecorder.startRecording error: \(error)")
         }
     }
-    
+
     func stopRecording() {
-        audioRecorder?.stop()
+        guard let recorder = audioRecorder else { return }
+        let url = recorder.url
+        recorder.stop()
         isRecording = false
         meteringTimer?.invalidate()
         meteringTimer = nil
+        audioLevel = 0
+        // Surface URL after stop so upload screen shows correctly
+        recordingURL = url
     }
-    
+
     private func startMetering() {
         meteringTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             guard let self = self, let recorder = self.audioRecorder else { return }
             recorder.updateMeters()
             let level = recorder.averagePower(forChannel: 0)
             DispatchQueue.main.async {
-                // Normalize from -60...0 dB to 0...1
-                self.audioLevel = max(0, (level + 60) / 60)
+                // Normalize -60…0 dB → 0…1
+                self.audioLevel = max(0, min(1, (level + 60) / 60))
             }
         }
     }
-    
+
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         isRecording = false
         meteringTimer?.invalidate()
+        meteringTimer = nil
+        if flag { recordingURL = recorder.url }
     }
 }
