@@ -287,6 +287,21 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     .padding(.horizontal, LM.Space.xl)
                     .padding(.top, LM.Space.lg)
 
+                // Live transcript — lets you confirm the mic is hearing you
+                // and see exactly what words are being captured.
+                ScrollView {
+                    Text(speechService.transcript.isEmpty ? "Listening..." : speechService.transcript)
+                        .font(LM.Fonts.mono(11))
+                        .foregroundColor(speechService.transcript.isEmpty
+                            ? LM.Colors.textTertiary.opacity(0.5)
+                            : LM.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LM.Space.md)
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(height: 52)
+                .padding(.top, LM.Space.sm)
+
                 Spacer()
 
                 if !attendees.isEmpty {

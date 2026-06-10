@@ -35,6 +35,7 @@ final class LUMENService: ObservableObject {
     // SpeechRecognizerService delivers the FULL cumulative transcript on every update,
     // so we track how many words we've already scanned and only look at new ones.
     private var lastProcessedWordCount: Int = 0
+    private var alreadyTriggered: Bool = false
 
     // Cross-chunk lookback: keep the last word from the previous scan so a trigger split
     // as "...hey" then "lumen..." across two updates is still detected.
@@ -66,92 +67,58 @@ final class LUMENService: ObservableObject {
     }
 
     // MARK: - Transcript Processing
-    // `text` is the FULL cumulative transcript. We scan only words we haven't seen yet.
+    //
+    // SIMPLE APPROACH: search the full lowercased transcript string for "hey lumen".
+    // No word-splitting, no buffers, no punctuation stripping.
+    // Works regardless of how Apple's speech engine formats the words.
+    // We track what index we last found a trigger at so we don't fire twice.
+    private var lastTriggerSearchIndex: String.Index? = nil
+
     func processTranscript(_ text: String, fullContext: String) {
-        let allWords = text.lowercased()
-            .components(separatedBy: .whitespacesAndNewlines)
-            .map { stripPunctuation($0) }
-            .filter { !$0.isEmpty }
+        guard !text.isEmpty else { return }
 
-        guard allWords.count > lastProcessedWordCount else { return }
-        let newWords = Array(allWords[lastProcessedWordCount...])
-        lastProcessedWordCount = allWords.count
-        guard !newWords.isEmpty else { return }
+        let lower = text.lowercased()
 
-        // If we're capturing the question that follows "Hey Lumen", accumulate words
-        // until we have something substantial, then ask Claude.
+        // If already capturing a question after trigger, collect new words.
         if captureNextSentence {
-            let added = newWords.joined(separator: " ")
-            questionBuffer += questionBuffer.isEmpty ? added : " " + added
-            tailBuffer = Array(newWords.suffix(1))
-            let trimmed = questionBuffer.trimmingCharacters(in: .whitespaces)
-            if trimmed.count > 3 {
-                captureNextSentence = false
-                let q = trimmed
-                questionBuffer = ""
-                triggerQuestion(question: q, context: fullContext)
+            // The question is everything after "hey lumen" in the full transcript.
+            if let range = lower.range(of: "hey lumen") {
+                let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if afterTrigger.count > 3 {
+                    captureNextSentence = false
+                    questionBuffer = ""
+                    triggerQuestion(question: afterTrigger, context: fullContext)
+                }
             }
             return
         }
 
-        // Slide a 2-word window over [last word from previous scan] + new words.
-        let window = tailBuffer + newWords
-        if window.count >= 2 {
-            for i in 0..<(window.count - 1) {
-                if window[i] == triggerWords[0] && window[i + 1] == triggerWords[1] {
-                    // TRIGGER FIRED. Anything after "lumen" in this batch starts the question.
-                    fireTrigger(window: window, pairIndex: i, fullContext: fullContext)
-                    return
+        // Look for "hey lumen" anywhere in the transcript.
+        // Only fire if we haven't already fired on this exact trigger position.
+        if lower.contains("hey lumen") {
+            // Make sure we haven't already handled this trigger.
+            guard !alreadyTriggered else { return }
+            alreadyTriggered = true
+
+            speakAck()
+            DispatchQueue.main.async { self.orbState = .triggered }
+
+            // Collect what comes after "hey lumen" as the question.
+            if let range = lower.range(of: "hey lumen") {
+                let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                if afterTrigger.count > 3 {
+                    triggerQuestion(question: afterTrigger, context: fullContext)
+                } else {
+                    // Question not in yet — wait for more transcript.
+                    captureNextSentence = true
+                    triggerDetectedAt = Date()
+                    questionBuffer = ""
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        if self.captureNextSentence { self.orbState = .listening }
+                    }
                 }
             }
         }
-
-        // Keep last word for the next scan (to catch a "hey" / "lumen" boundary split).
-        tailBuffer = Array(newWords.suffix(1))
-    }
-
-    private func fireTrigger(window: [String], pairIndex: Int, fullContext: String) {
-        captureNextSentence = true
-        triggerDetectedAt = Date()
-        questionBuffer = ""
-        tailBuffer = []
-
-        // Words after "lumen" in the current window become the start of the question.
-        let afterIndex = pairIndex + 2
-        if afterIndex < window.count {
-            questionBuffer = window[afterIndex...].joined(separator: " ")
-        }
-
-        speakAck()
-
-        DispatchQueue.main.async {
-            self.orbState = .triggered
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                // Stay in capture mode; show listening until the question is collected.
-                if self.captureNextSentence { self.orbState = .listening }
-            }
-        }
-
-        // If the question already arrived in the same batch, dispatch immediately.
-        let trimmed = questionBuffer.trimmingCharacters(in: .whitespaces)
-        if trimmed.count > 3 {
-            captureNextSentence = false
-            let q = trimmed
-            questionBuffer = ""
-            triggerQuestion(question: q, context: fullContext)
-        }
-    }
-
-    // MARK: - Helpers
-
-    /// Strip ALL punctuation/symbols from a word (not just the ends).
-    /// "hey," → "hey", "lumen." → "lumen", "hey!" → "hey".
-    private func stripPunctuation(_ word: String) -> String {
-        let strip = CharacterSet.punctuationCharacters.union(.symbols)
-        return word.unicodeScalars
-            .filter { !strip.contains($0) }
-            .map { String($0) }
-            .joined()
     }
 
     // Abort question capture if nothing useful followed the trigger within 3s.
@@ -305,6 +272,7 @@ final class LUMENService: ObservableObject {
     }
 
     func reset() {
+        alreadyTriggered = false
         lastProcessedWordCount = 0
         captureNextSentence = false
         questionBuffer = ""
