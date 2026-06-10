@@ -8,198 +8,263 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State private var isSendingEmail = false
     @State private var isShowingShareSheet = false
     @State private var shareItems: [Any] = []
-    
-    // Audio playback
+
+    // Audio
     @StateObject private var audioPlayer = MeetingAudioPlayer()
-    
+
+    // LUMEN Chat
+    @StateObject private var lumenService = LUMENService()
+    @State private var chatInput = ""
+    @State private var chatMessages: [(role: String, text: String)] = []
+    @State private var isChatLoading = false
+    @State private var showChat = false
+
     var body: some View {
         ZStack {
-            DNColors.background.ignoresSafeArea()
-            
+            LM.Colors.void.ignoresSafeArea()
+
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    
-                    // MARK: Header Card
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(meeting.createdAt, style: .date)
-                                    .font(.system(size: 22, weight: .bold))
-                                    .foregroundColor(DNColors.textPrimary)
-                                Text(meeting.createdAt, style: .time)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DNColors.textSecondary)
+                VStack(alignment: .leading, spacing: LM.Space.md) {
+
+                    // MARK: Header
+                    LUMENCard(borderColor: LM.Colors.borderCyan) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(meeting.createdAt, style: .date)
+                                        .font(LM.Fonts.text(20, weight: .bold))
+                                        .foregroundColor(LM.Colors.textPrimary)
+                                    Text(meeting.createdAt, style: .time)
+                                        .font(LM.Fonts.mono(12))
+                                        .foregroundColor(LM.Colors.textTertiary)
+                                }
+                                Spacer()
+                                LUMENStatusBadge(status: meeting.status)
                             }
-                            Spacer()
-                            StatusPill(status: meeting.status)
-                        }
-                        
-                        if meeting.status.isProcessing {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: DNColors.accent))
-                                    .scaleEffect(0.8)
-                                Text("Processing your meeting...")
-                                    .font(.system(size: 13))
-                                    .foregroundColor(DNColors.textSecondary)
+                            if meeting.status.isProcessing {
+                                HStack(spacing: 8) {
+                                    LUMENOrbView(state: .responding, amplitude: 0, size: 28)
+                                    Text("LUMEN is processing your meeting...")
+                                        .font(LM.Fonts.text(12))
+                                        .foregroundColor(LM.Colors.textSecondary)
+                                }
                             }
-                            .padding(.top, 4)
-                        }
-                        
-                        if let organizer = meeting.organizerName, !organizer.isEmpty {
-                            HStack(spacing: 6) {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DNColors.accent)
-                                Text(organizer)
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DNColors.textSecondary)
+                            if let org = meeting.organizerName, !org.isEmpty {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "person.circle.fill").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
+                                    Text(org).font(LM.Fonts.text(13)).foregroundColor(LM.Colors.textSecondary)
+                                }
                             }
                         }
                     }
-                    .padding(16)
-                    .background(DNColors.surface)
-                    .cornerRadius(16)
-                    
+
                     // MARK: Audio Player
-                    if meeting.audioUrl != nil || true {
-                        AudioPlayerCard(audioPlayer: audioPlayer, meeting: meeting)
-                    }
-                    
+                    LUMENAudioPlayerCard(audioPlayer: audioPlayer, transcript: meeting.transcript)
+
                     // MARK: Attendees
                     if !meeting.attendees.isEmpty {
-                        SectionCard(title: "Attendees", icon: "person.2.fill") {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(meeting.attendees) { attendee in
-                                    HStack(spacing: 10) {
-                                        ZStack {
-                                            Circle()
-                                                .fill(DNColors.accent.opacity(0.15))
-                                                .frame(width: 36, height: 36)
-                                            Text(String(attendee.name.prefix(1)).uppercased())
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundColor(DNColors.accent)
-                                        }
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(attendee.name)
-                                                .font(.system(size: 14, weight: .medium))
-                                                .foregroundColor(DNColors.textPrimary)
-                                            Text(attendee.email)
-                                                .font(.system(size: 12))
-                                                .foregroundColor(DNColors.textTertiary)
+                        LUMENCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                LUMENSectionHeader(title: "Attendees", icon: "person.2.fill")
+                                VStack(spacing: 8) {
+                                    ForEach(meeting.attendees) { a in
+                                        HStack(spacing: 10) {
+                                            ZStack {
+                                                Circle().fill(LM.Colors.cyanGlow).frame(width: 34, height: 34)
+                                                Text(String(a.name.prefix(1)).uppercased())
+                                                    .font(LM.Fonts.rounded(13, weight: .bold))
+                                                    .foregroundColor(LM.Colors.cyan)
+                                            }
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(a.name).font(LM.Fonts.text(13, weight: .medium)).foregroundColor(LM.Colors.textPrimary)
+                                                Text(a.email).font(LM.Fonts.mono(11)).foregroundColor(LM.Colors.textTertiary)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    
+
                     // MARK: Action Items
                     if let items = meeting.actionItems, !items.isEmpty {
-                        SectionCard(title: "Action Items", icon: "checkmark.circle.fill", accentColor: DNColors.successGreen) {
-                            VStack(alignment: .leading, spacing: 10) {
-                                ForEach(Array(items.enumerated()), id: \.offset) { idx, item in
-                                    HStack(alignment: .top, spacing: 10) {
-                                        ZStack {
-                                            Circle()
-                                                .stroke(DNColors.successGreen.opacity(0.4), lineWidth: 1.5)
-                                                .frame(width: 22, height: 22)
-                                            Text("\(idx + 1)")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundColor(DNColors.successGreen)
+                        LUMENCard(borderColor: LM.Colors.green.opacity(0.3), glowColor: LM.Colors.green) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                LUMENSectionHeader(title: "Action Items", icon: "checkmark.circle.fill", color: LM.Colors.green)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                                        HStack(alignment: .top, spacing: 10) {
+                                            ZStack {
+                                                Circle().stroke(LM.Colors.green.opacity(0.4), lineWidth: 1.5).frame(width: 22, height: 22)
+                                                Text("\(i+1)").font(LM.Fonts.mono(9, weight: .bold)).foregroundColor(LM.Colors.green)
+                                            }
+                                            Text(item).font(LM.Fonts.text(13)).foregroundColor(LM.Colors.textSecondary).fixedSize(horizontal: false, vertical: true)
                                         }
-                                        Text(item)
-                                            .font(.system(size: 14))
-                                            .foregroundColor(DNColors.textSecondary)
-                                            .fixedSize(horizontal: false, vertical: true)
                                     }
                                 }
                             }
                         }
                     }
-                    
+
+                    // MARK: LUMEN Insights (live Q&A logged during recording)
+                    if !lumenService.insights.isEmpty {
+                        LUMENCard(borderColor: LM.Colors.purple.opacity(0.3), glowColor: LM.Colors.purple) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                LUMENSectionHeader(title: "LUMEN Insights", icon: "sparkles", color: LM.Colors.purple)
+                                VStack(spacing: 10) {
+                                    ForEach(lumenService.insights) { insight in
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            HStack(spacing: 6) {
+                                                Image(systemName: "mic.fill").font(LM.Fonts.text(10)).foregroundColor(LM.Colors.textTertiary)
+                                                Text(insight.question).font(LM.Fonts.text(12)).foregroundColor(LM.Colors.textSecondary).italic()
+                                            }
+                                            HStack(alignment: .top, spacing: 6) {
+                                                Image(systemName: "sparkle").font(LM.Fonts.text(10)).foregroundColor(LM.Colors.purple)
+                                                Text(insight.answer).font(LM.Fonts.text(13)).foregroundColor(LM.Colors.textPrimary)
+                                            }
+                                        }
+                                        .padding(10)
+                                        .background(LM.Colors.deep)
+                                        .cornerRadius(LM.Radius.sm)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // MARK: Summary
                     if let summary = meeting.summary {
-                        SectionCard(title: "Summary", icon: "doc.text.fill") {
-                            Text(summary)
-                                .font(.system(size: 14))
-                                .foregroundColor(DNColors.textSecondary)
-                                .lineSpacing(5)
-                        }
-                    }
-                    
-                    // MARK: Transcript
-                    if let transcript = meeting.transcript {
-                        SectionCard(title: "Full Transcript", icon: "text.quote") {
-                            Text(transcript)
-                                .font(.system(size: 13))
-                                .foregroundColor(DNColors.textTertiary)
-                                .lineSpacing(6)
-                        }
-                    }
-                    
-                    // MARK: Action Buttons
-                    VStack(spacing: 12) {
-                        if meeting.status == .completed || meeting.status == .sent {
-                            Button(action: exportMeeting) {
-                                Label("Share Meeting Notes", systemImage: "square.and.arrow.up")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(14)
-                                    .background(DNColors.surfaceElevated)
-                                    .foregroundColor(DNColors.textPrimary)
-                                    .cornerRadius(12)
-                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(DNColors.divider, lineWidth: 1))
+                        LUMENCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                LUMENSectionHeader(title: "Summary", icon: "doc.text.fill")
+                                Text(summary).font(LM.Fonts.text(13)).foregroundColor(LM.Colors.textSecondary).lineSpacing(5)
                             }
-                            
-                            Button(action: sendEmail) {
-                                Group {
-                                    if isSendingEmail {
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                            .frame(maxWidth: .infinity)
-                                    } else {
-                                        Label(meeting.status == .sent ? "Resend Recap Email" : "Send Recap Email", systemImage: "envelope.fill")
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .frame(maxWidth: .infinity)
+                        }
+                    }
+
+                    // MARK: LUMEN Chat
+                    if meeting.status == .completed || meeting.status == .sent {
+                        LUMENCard(borderColor: LM.Colors.borderCyan) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                HStack {
+                                    LUMENSectionHeader(title: "Ask LUMEN", icon: "bubble.left.and.bubble.right.fill")
+                                    Spacer()
+                                    Button(action: { withAnimation { showChat.toggle() } }) {
+                                        Image(systemName: showChat ? "chevron.up" : "chevron.down")
+                                            .font(LM.Fonts.text(12))
+                                            .foregroundColor(LM.Colors.textTertiary)
                                     }
                                 }
-                                .padding(14)
-                                .background(DNColors.accent)
-                                .foregroundColor(.white)
-                                .cornerRadius(12)
+                                if showChat {
+                                    // Chat messages
+                                    if !chatMessages.isEmpty {
+                                        VStack(spacing: 8) {
+                                            ForEach(Array(chatMessages.enumerated()), id: \.offset) { _, msg in
+                                                HStack(alignment: .top, spacing: 8) {
+                                                    if msg.role == "user" {
+                                                        Spacer()
+                                                        Text(msg.text)
+                                                            .font(LM.Fonts.text(13))
+                                                            .foregroundColor(.black)
+                                                            .padding(10)
+                                                            .background(LM.Colors.cyan)
+                                                            .cornerRadius(LM.Radius.sm)
+                                                    } else {
+                                                        HStack(alignment: .top, spacing: 6) {
+                                                            Image(systemName: "sparkle").font(LM.Fonts.text(11)).foregroundColor(LM.Colors.cyan).padding(.top, 2)
+                                                            Text(msg.text)
+                                                                .font(LM.Fonts.text(13))
+                                                                .foregroundColor(LM.Colors.textPrimary)
+                                                                .padding(10)
+                                                                .background(LM.Colors.elevated)
+                                                                .cornerRadius(LM.Radius.sm)
+                                                        }
+                                                        Spacer()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Input row
+                                    HStack(spacing: 8) {
+                                        LUMENTextField(placeholder: "Ask anything about this meeting...", text: $chatInput)
+                                        Button(action: sendChatMessage) {
+                                            ZStack {
+                                                Circle().fill(chatInput.isEmpty ? LM.Colors.surface : LM.Colors.cyan).frame(width: 36, height: 36)
+                                                if isChatLoading {
+                                                    ProgressView().progressViewStyle(CircularProgressViewStyle(tint: .black)).scaleEffect(0.7)
+                                                } else {
+                                                    Image(systemName: "arrow.up").font(LM.Fonts.text(14, weight: .bold)).foregroundColor(chatInput.isEmpty ? LM.Colors.textTertiary : .black)
+                                                }
+                                            }
+                                        }
+                                        .disabled(chatInput.isEmpty || isChatLoading)
+                                    }
+
+                                    // Suggested questions
+                                    if chatMessages.isEmpty {
+                                        ScrollView(.horizontal, showsIndicators: false) {
+                                            HStack(spacing: 8) {
+                                                ForEach(["What decisions were made?", "List all action items", "What were the key topics?", "Who said what?"], id: \.self) { q in
+                                                    Button(action: { chatInput = q; sendChatMessage() }) {
+                                                        Text(q)
+                                                            .font(LM.Fonts.text(11))
+                                                            .foregroundColor(LM.Colors.cyan)
+                                                            .padding(.horizontal, 10)
+                                                            .padding(.vertical, 6)
+                                                            .background(LM.Colors.cyanGlow)
+                                                            .cornerRadius(LM.Radius.pill)
+                                                            .overlay(RoundedRectangle(cornerRadius: LM.Radius.pill).stroke(LM.Colors.borderCyan, lineWidth: 1))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            .disabled(isSendingEmail)
                         }
                     }
-                    
-                    Spacer(minLength: 40)
+
+                    // MARK: Transcript
+                    if let transcript = meeting.transcript {
+                        LUMENCard {
+                            VStack(alignment: .leading, spacing: 12) {
+                                LUMENSectionHeader(title: "Full Transcript", icon: "text.quote")
+                                Text(transcript)
+                                    .font(LM.Fonts.text(12))
+                                    .foregroundColor(LM.Colors.textTertiary)
+                                    .lineSpacing(6)
+                            }
+                        }
+                    }
+
+                    // MARK: Action Buttons
+                    if meeting.status == .completed || meeting.status == .sent {
+                        VStack(spacing: 10) {
+                            LUMENButton(title: "Share Meeting Notes", icon: "square.and.arrow.up", style: .secondary, action: exportMeeting)
+                            LUMENButton(title: isSendingEmail ? "Sending..." : (meeting.status == .sent ? "Resend Recap Email" : "Send Recap Email"), icon: "envelope.fill", style: .primary, action: sendEmail)
+                                .disabled(isSendingEmail)
+                        }
+                    }
+
+                    Spacer(minLength: LM.Space.xl)
                 }
-                .padding(16)
+                .padding(LM.Space.md)
             }
         }
         .navigationTitle("Meeting")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $isShowingShareSheet) {
-            ShareSheet(items: shareItems)
-        }
-        .onReceive(timer) { _ in
-            if meeting.status.isProcessing {
-                refreshMeeting()
-            }
-        }
+        .sheet(isPresented: $isShowingShareSheet) { ShareSheet(items: shareItems) }
+        .onReceive(timer) { _ in if meeting.status.isProcessing { refreshMeeting() } }
         .onAppear {
-            if let urlStr = meeting.audioUrl, let url = URL(string: urlStr) {
-                audioPlayer.load(url: url)
-            }
+            if let urlStr = meeting.audioUrl, let url = URL(string: urlStr) { audioPlayer.load(url: url) }
         }
-        .onDisappear {
-            audioPlayer.stop()
-        }
+        .onDisappear { audioPlayer.stop() }
     }
-    
+
     func refreshMeeting() {
         Task {
             do {
@@ -208,7 +273,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
             } catch {}
         }
     }
-    
+
     func sendEmail() {
         isSendingEmail = true
         Task {
@@ -216,277 +281,208 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                 try await apiService.sendRecapEmail(id: meeting.id)
                 refreshMeeting()
                 await MainActor.run { isSendingEmail = false }
-            } catch {
-                await MainActor.run { isSendingEmail = false }
-            }
+            } catch { await MainActor.run { isSendingEmail = false } }
         }
     }
-    
+
     func exportMeeting() {
-        var text = "Meeting Notes\n"
-        text += "Date: \(meeting.createdAt)\n\n"
-        if let organizer = meeting.organizerName { text += "Organizer: \(organizer)\n" }
-        if !meeting.attendees.isEmpty {
-            text += "Attendees: \(meeting.attendees.map { $0.name }.joined(separator: ", "))\n"
-        }
-        if let summary = meeting.summary { text += "\nSUMMARY\n\(summary)\n" }
-        if let items = meeting.actionItems, !items.isEmpty {
-            text += "\nACTION ITEMS\n"
-            for (i, item) in items.enumerated() { text += "\(i+1). \(item)\n" }
-        }
-        if let transcript = meeting.transcript { text += "\nFULL TRANSCRIPT\n\(transcript)\n" }
-        shareItems = [text]
+        var t = "Meeting Notes — LUMEN\nDate: \(meeting.createdAt)\n\n"
+        if let org = meeting.organizerName { t += "Organizer: \(org)\n" }
+        if !meeting.attendees.isEmpty { t += "Attendees: \(meeting.attendees.map { $0.name }.joined(separator: ", "))\n" }
+        if let s = meeting.summary { t += "\nSUMMARY\n\(s)\n" }
+        if let items = meeting.actionItems, !items.isEmpty { t += "\nACTION ITEMS\n"; for (i, item) in items.enumerated() { t += "\(i+1). \(item)\n" } }
+        if !lumenService.insights.isEmpty { t += "\nLUMEN INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
+        if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
+        shareItems = [t]
         isShowingShareSheet = true
     }
-}
 
-// MARK: - Audio Player Card
-struct AudioPlayerCard: View {
-    @ObservedObject var audioPlayer: MeetingAudioPlayer
-    let meeting: Meeting
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            // Waveform visualization
-            HStack(spacing: 3) {
-                ForEach(0..<40, id: \.self) { i in
-                    WaveformBar(index: i, isPlaying: audioPlayer.isPlaying, progress: audioPlayer.progress)
-                }
+    func sendChatMessage() {
+        let q = chatInput.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        chatInput = ""
+        chatMessages.append((role: "user", text: q))
+        isChatLoading = true
+        Task {
+            let context = meeting.transcript ?? meeting.summary ?? ""
+            let answer = await lumenService.ask(question: q, context: context)
+            await MainActor.run {
+                chatMessages.append((role: "lumen", text: answer))
+                isChatLoading = false
             }
-            .frame(height: 48)
-            .padding(.horizontal, 8)
-            
-            // Scrubber
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.1))
-                        .frame(height: 3)
-                    Capsule()
-                        .fill(DNColors.accent)
-                        .frame(width: geo.size.width * CGFloat(audioPlayer.progress), height: 3)
-                }
-                .frame(height: 3)
-                .contentShape(Rectangle().size(CGSize(width: geo.size.width, height: 28)).offset(y: -12))
-                .gesture(DragGesture(minimumDistance: 0).onChanged { val in
-                    let p = min(max(val.location.x / geo.size.width, 0), 1)
-                    audioPlayer.seek(to: Double(p))
-                })
-            }
-            .frame(height: 3)
-            .padding(.horizontal, 8)
-            
-            // Time + Controls
-            HStack {
-                Text(audioPlayer.currentTimeString)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(DNColors.textTertiary)
-                Spacer()
-                
-                HStack(spacing: 28) {
-                    Button(action: { audioPlayer.skip(-15) }) {
-                        Image(systemName: "gobackward.15")
-                            .font(.system(size: 20))
-                            .foregroundColor(DNColors.textSecondary)
-                    }
-                    Button(action: { audioPlayer.isPlaying ? audioPlayer.pause() : audioPlayer.play() }) {
-                        ZStack {
-                            Circle()
-                                .fill(DNColors.accent)
-                                .frame(width: 52, height: 52)
-                                .shadow(color: DNColors.accent.opacity(0.4), radius: 12, x: 0, y: 4)
-                            Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white)
-                                .offset(x: audioPlayer.isPlaying ? 0 : 2)
-                        }
-                    }
-                    Button(action: { audioPlayer.skip(15) }) {
-                        Image(systemName: "goforward.15")
-                            .font(.system(size: 20))
-                            .foregroundColor(DNColors.textSecondary)
-                    }
-                }
-                
-                Spacer()
-                Text(audioPlayer.durationString)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(DNColors.textTertiary)
-            }
-            .padding(.horizontal, 8)
         }
-        .padding(16)
-        .background(DNColors.surface)
-        .cornerRadius(16)
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(DNColors.accent.opacity(0.2), lineWidth: 1))
     }
 }
 
-// MARK: - Waveform Bar
-struct WaveformBar: View {
+// MARK: - LUMEN Audio Player Card
+struct LUMENAudioPlayerCard: View {
+    @ObservedObject var audioPlayer: MeetingAudioPlayer
+    let transcript: String?
+    @State private var playbackRate: Float = 1.0
+    private let rates: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+
+    var body: some View {
+        LUMENCard(borderColor: LM.Colors.borderCyan) {
+            VStack(spacing: 14) {
+                // Waveform
+                HStack(spacing: 3) {
+                    ForEach(0..<44, id: \.self) { i in
+                        LUMENPlaybackBar(index: i, isPlaying: audioPlayer.isPlaying, progress: audioPlayer.progress)
+                    }
+                }
+                .frame(height: 44)
+
+                // Scrubber
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(LM.Colors.surface).frame(height: 3)
+                        Capsule().fill(LM.Colors.cyan).frame(width: max(0, geo.size.width * CGFloat(audioPlayer.progress)), height: 3)
+                        Circle().fill(LM.Colors.cyan).frame(width: 12, height: 12)
+                            .offset(x: max(0, geo.size.width * CGFloat(audioPlayer.progress) - 6))
+                            .shadow(color: LM.Colors.cyan.opacity(0.6), radius: 4)
+                    }
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                        audioPlayer.seek(to: Double(min(max(v.location.x / geo.size.width, 0), 1)))
+                    })
+                }
+                .frame(height: 12)
+
+                // Time + controls
+                HStack {
+                    Text(audioPlayer.currentTimeString)
+                        .font(LM.Fonts.mono(11))
+                        .foregroundColor(LM.Colors.textTertiary)
+                    Spacer()
+                    HStack(spacing: 24) {
+                        Button(action: { audioPlayer.skip(-15) }) {
+                            Image(systemName: "gobackward.15").font(LM.Fonts.text(18)).foregroundColor(LM.Colors.textSecondary)
+                        }
+                        Button(action: { audioPlayer.isPlaying ? audioPlayer.pause() : audioPlayer.play() }) {
+                            ZStack {
+                                Circle().fill(LM.Colors.cyan).frame(width: 52, height: 52)
+                                    .shadow(color: LM.Colors.cyan.opacity(0.5), radius: 12)
+                                Image(systemName: audioPlayer.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(LM.Fonts.text(20))
+                                    .foregroundColor(.black)
+                                    .offset(x: audioPlayer.isPlaying ? 0 : 2)
+                            }
+                        }
+                        Button(action: { audioPlayer.skip(15) }) {
+                            Image(systemName: "goforward.15").font(LM.Fonts.text(18)).foregroundColor(LM.Colors.textSecondary)
+                        }
+                    }
+                    Spacer()
+                    Text(audioPlayer.durationString)
+                        .font(LM.Fonts.mono(11))
+                        .foregroundColor(LM.Colors.textTertiary)
+                }
+
+                // Speed control
+                HStack(spacing: 0) {
+                    ForEach(rates, id: \.self) { rate in
+                        Button(action: {
+                            playbackRate = rate
+                            audioPlayer.setRate(rate)
+                        }) {
+                            Text(rate == 1.0 ? "1x" : "\(rate < 1 ? String(format: "%.2g", rate) : String(format: "%.2gx", rate))")
+                                .font(LM.Fonts.mono(10, weight: .bold))
+                                .foregroundColor(playbackRate == rate ? .black : LM.Colors.textSecondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 5)
+                                .background(playbackRate == rate ? LM.Colors.cyan : LM.Colors.deep)
+                        }
+                    }
+                }
+                .cornerRadius(LM.Radius.sm)
+                .overlay(RoundedRectangle(cornerRadius: LM.Radius.sm).stroke(LM.Colors.borderCyan, lineWidth: 1))
+            }
+        }
+    }
+}
+
+// MARK: - Playback Waveform Bar
+struct LUMENPlaybackBar: View {
     let index: Int
     let isPlaying: Bool
     let progress: Double
-    
-    @State private var animHeight: CGFloat = 4
-    
-    private var baseHeight: CGFloat {
-        let pattern: [CGFloat] = [8, 18, 28, 20, 10, 32, 16, 24, 36, 12,
-                                   30, 22, 14, 38, 10, 26, 20, 34, 8, 18,
-                                   28, 12, 36, 16, 24, 10, 30, 22, 8, 20,
-                                   34, 14, 26, 18, 32, 10, 22, 28, 16, 24]
-        return pattern[index % pattern.count]
+    @State private var animH: CGFloat = 4
+
+    private var base: CGFloat {
+        let p: [CGFloat] = [8,18,28,22,12,34,18,26,38,14,32,24,16,40,10,28,20,36,8,18,30,14,38,18,26,12,32,24,10,22,36,16,28,20,34,12,24,30,18,26,10,22,34,16]
+        return p[index % p.count]
     }
-    
-    private var isActive: Bool {
-        Double(index) / 40.0 < progress
-    }
-    
+    private var active: Bool { Double(index) / 44.0 < progress }
+
     var body: some View {
         RoundedRectangle(cornerRadius: 2)
-            .fill(isActive ? DNColors.accent : Color.white.opacity(0.15))
-            .frame(width: 3, height: isPlaying && isActive ? animHeight : baseHeight)
+            .fill(active ? LM.Colors.cyan : LM.Colors.borderDim)
+            .frame(width: 3, height: isPlaying && active ? animH : base)
             .onAppear {
-                if isPlaying {
-                    withAnimation(Animation.easeInOut(duration: Double.random(in: 0.4...0.8)).repeatForever(autoreverses: true).delay(Double(index) * 0.03)) {
-                        animHeight = baseHeight * CGFloat.random(in: 0.5...1.5)
-                    }
+                withAnimation(Animation.easeInOut(duration: Double.random(in: 0.4...0.9)).repeatForever(autoreverses: true).delay(Double(index) * 0.02)) {
+                    animH = base * CGFloat.random(in: 0.5...1.6)
                 }
             }
-            .onChange(of: isPlaying, perform: { playing in
-                if playing {
-                    withAnimation(Animation.easeInOut(duration: Double.random(in: 0.4...0.8)).repeatForever(autoreverses: true)) {
-                        animHeight = baseHeight * CGFloat.random(in: 0.5...1.5)
-                    }
-                } else {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        animHeight = baseHeight
-                    }
+            .onChange(of: isPlaying, perform: { p in
+                withAnimation(p ? Animation.easeInOut(duration: Double.random(in: 0.4...0.9)).repeatForever(autoreverses: true) : .easeOut(duration: 0.3)) {
+                    animH = p ? base * CGFloat.random(in: 0.5...1.6) : base
                 }
             })
     }
 }
 
-// MARK: - Section Card
-struct SectionCard<Content: View>: View {
-    let title: String
-    let icon: String
-    var accentColor: Color = DNColors.accent
-    @ViewBuilder let content: Content
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(accentColor)
-                Text(title.uppercased())
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(accentColor)
-                    .tracking(1.2)
-            }
-            content
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(DNColors.surface)
-        .cornerRadius(16)
-    }
-}
-
-// MARK: - Audio Player ViewModel
+// MARK: - MeetingAudioPlayer (extended with rate control)
 class MeetingAudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private var player: AVAudioPlayer?
     @Published var isPlaying = false
     @Published var progress: Double = 0
     @Published var currentTimeString = "0:00"
     @Published var durationString = "0:00"
-    
     private var timer: Timer?
-    
+    private var rate: Float = 1.0
+
     func load(url: URL) {
-        // Try to load the audio file from local documents first
-        let localURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(url.lastPathComponent)
-        let targetURL = FileManager.default.fileExists(atPath: localURL.path) ? localURL : url
-        
+        let local = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(url.lastPathComponent)
+        let target = FileManager.default.fileExists(atPath: local.path) ? local : url
         DispatchQueue.global().async { [weak self] in
             guard let self = self else { return }
-            if let data = try? Data(contentsOf: targetURL),
-               let player = try? AVAudioPlayer(data: data) {
+            if let data = try? Data(contentsOf: target), let p = try? AVAudioPlayer(data: data) {
                 DispatchQueue.main.async {
-                    self.player = player
-                    player.delegate = self
-                    player.prepareToPlay()
-                    self.durationString = self.formatTime(player.duration)
+                    self.player = p; p.delegate = self; p.enableRate = true; p.prepareToPlay()
+                    self.durationString = self.fmt(p.duration)
                 }
             }
         }
     }
-    
+
     func play() {
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        player?.play()
-        isPlaying = true
-        startTimer()
+        player?.rate = rate; player?.play(); isPlaying = true; startTimer()
     }
-    
-    func pause() {
-        player?.pause()
-        isPlaying = false
-        timer?.invalidate()
-    }
-    
-    func stop() {
-        player?.stop()
-        isPlaying = false
-        timer?.invalidate()
-    }
-    
-    func seek(to fraction: Double) {
-        guard let player = player else { return }
-        player.currentTime = player.duration * fraction
-        updateProgress()
-    }
-    
-    func skip(_ seconds: Double) {
-        guard let player = player else { return }
-        player.currentTime = min(max(player.currentTime + seconds, 0), player.duration)
-        updateProgress()
-    }
-    
+    func pause() { player?.pause(); isPlaying = false; timer?.invalidate() }
+    func stop() { player?.stop(); isPlaying = false; timer?.invalidate() }
+    func seek(to f: Double) { guard let p = player else { return }; p.currentTime = p.duration * f; update() }
+    func skip(_ s: Double) { guard let p = player else { return }; p.currentTime = min(max(p.currentTime + s, 0), p.duration); update() }
+    func setRate(_ r: Float) { rate = r; if let p = player { p.rate = r } }
+
     private func startTimer() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.updateProgress()
-        }
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.update() }
     }
-    
-    private func updateProgress() {
-        guard let player = player, player.duration > 0 else { return }
-        progress = player.currentTime / player.duration
-        currentTimeString = formatTime(player.currentTime)
+    private func update() {
+        guard let p = player, p.duration > 0 else { return }
+        progress = p.currentTime / p.duration; currentTimeString = fmt(p.currentTime)
     }
-    
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        isPlaying = false
-        progress = 0
-        timer?.invalidate()
-        currentTimeString = "0:00"
+    func audioPlayerDidFinishPlaying(_ p: AVAudioPlayer, successfully f: Bool) {
+        isPlaying = false; progress = 0; timer?.invalidate(); currentTimeString = "0:00"
     }
-    
-    private func formatTime(_ time: TimeInterval) -> String {
-        let mins = Int(time) / 60
-        let secs = Int(time) % 60
-        return String(format: "%d:%02d", mins, secs)
-    }
+    private func fmt(_ t: TimeInterval) -> String { String(format: "%d:%02d", Int(t)/60, Int(t)%60) }
 }
 
 // MARK: - Share Sheet
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-    func updateUIViewController(_ uvc: UIActivityViewController, context: Context) {}
+    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
+    func updateUIViewController(_ u: UIActivityViewController, context: Context) {}
 }

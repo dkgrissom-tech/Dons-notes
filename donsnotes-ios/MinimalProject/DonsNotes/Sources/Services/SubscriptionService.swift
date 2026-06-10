@@ -27,12 +27,12 @@ class SubscriptionService: ObservableObject {
         UserDefaults.standard.set(enabled, forKey: ownerKey)
         if enabled {
             // Owner gets unlimited (monthly functionality)
-            upgrade(to: .monthly)
+            upgrade(to: .lumenPro)
         }
     }
     
     var canTranscribeMore: Bool {
-        if isOwner || currentTier == .monthly { return true }
+        if isOwner || currentTier == .lumenPro || currentTier == .pro || currentTier == .lifetime { return true }
         // In a real app, we'd check usage against the tier limits
         return true 
     }

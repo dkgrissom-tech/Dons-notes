@@ -2,11 +2,16 @@ import SwiftUI
 
 @main
 struct DonsNotesApp: App {
-    @StateObject var apiService = MockAPIService()
+    @StateObject private var apiService = RealAPIService()
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
 
     var body: some Scene {
         WindowGroup {
-            MeetingListView(apiService: apiService)
+            if hasSeenOnboarding {
+                MeetingListView(apiService: apiService)
+            } else {
+                OnboardingView()
+            }
         }
     }
 }

@@ -1,0 +1,6 @@
+// Config.xcconfig.template — Copy to Config.xcconfig and fill in your keys
+// Config.xcconfig is in .gitignore — DO NOT commit
+
+ELEVENLABS_API_KEY = your_elevenlabs_key_here
+ELEVENLABS_VOICE_ID = EXAVITQu4vr4xnSDxMaL
+ANTHROPIC_API_KEY = your_anthropic_key_here

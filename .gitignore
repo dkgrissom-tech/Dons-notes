@@ -38,3 +38,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+# API Key configs
+Config.xcconfig
+!Config.xcconfig.template

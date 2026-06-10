@@ -7,34 +7,76 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @ObservedObject var contactService = ContactService.shared
     @ObservedObject var profileService = ProfileService.shared
     @StateObject var speechService = SpeechRecognizerService()
+    @StateObject var lumen = LUMENService()
     @State private var attendees: [Attendee] = []
     @State private var newAttendeeEmail = ""
     @State private var newAttendeeName = ""
     @State private var isUploading = false
-    @State private var isShowingContactPicker = false
+    @State private var elapsedSeconds = 0
+    @State private var recordingTimer: Timer? = nil
     @Environment(\.dismiss) var dismiss
-    
+
+    private var elapsedFormatted: String {
+        let m = elapsedSeconds / 60
+        let s = elapsedSeconds % 60
+        return String(format: "%02d:%02d", m, s)
+    }
+
     var body: some View {
         NavigationView {
             ZStack {
-                DNColors.background.ignoresSafeArea()
-                
-                VStack(spacing: 20) {
-                    if !recorder.isRecording && recorder.recordingURL == nil {
-                        setupSection
-                    } else {
-                        recordingSection
-                    }
+                LM.Colors.void.ignoresSafeArea()
+
+                if !recorder.isRecording && recorder.recordingURL == nil {
+                    setupSection
+                } else {
+                    recordingSection
                 }
-                .padding()
+
+                // LUMEN response overlay
+                if lumen.isShowingResponse {
+                    VStack {
+                        Spacer()
+                        LUMENResponseOverlay(
+                            question: lumen.currentQuestion,
+                            answer: lumen.currentAnswer,
+                            isVisible: lumen.isShowingResponse,
+                            onDismiss: { lumen.dismissResponse() }
+                        )
+                        .padding(.bottom, 100)
+                    }
+                    .transition(.opacity)
+                    .animation(.easeInOut(duration: 0.3), value: lumen.isShowingResponse)
+                }
             }
-            .navigationTitle(recorder.isRecording ? "Recording" : "New Meeting")
+            .navigationTitle(recorder.isRecording ? "" : "New Meeting")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundColor(DNColors.textSecondary)
+                    if !recorder.isRecording {
+                        Button("Cancel") { dismiss() }
+                            .foregroundColor(LM.Colors.textSecondary)
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if recorder.isRecording {
+                        // Voice toggle button
+                        Button(action: { lumen.setVoiceEnabled(!lumen.isVoiceEnabled) }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: lumen.isVoiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                                    .font(LM.Fonts.text(13))
+                                Text(lumen.isVoiceEnabled ? "Voice" : "Silent")
+                                    .font(LM.Fonts.mono(11, weight: .bold))
+                            }
+                            .foregroundColor(lumen.isVoiceEnabled ? LM.Colors.cyan : LM.Colors.textTertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(lumen.isVoiceEnabled ? LM.Colors.cyanGlow : LM.Colors.surface)
+                            .cornerRadius(LM.Radius.pill)
+                            .overlay(RoundedRectangle(cornerRadius: LM.Radius.pill).stroke(lumen.isVoiceEnabled ? LM.Colors.borderCyan : LM.Colors.borderDim, lineWidth: 1))
+                        }
+                    }
                 }
             }
             .onAppear {
@@ -43,339 +85,316 @@ struct RecordingView<T: APIServiceProtocol>: View {
         }
         .preferredColorScheme(.dark)
     }
-    
+
+    // MARK: - Setup Section
     private var setupSection: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                // Title
-                VStack(spacing: 6) {
-                    Image(systemName: "waveform.badge.mic")
-                        .font(.system(size: 40))
-                        .foregroundColor(DNColors.accent)
-                    Text("New Meeting")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(DNColors.textPrimary)
+            VStack(spacing: LM.Space.lg) {
+
+                // LUMEN header
+                VStack(spacing: 10) {
+                    LUMENOrbView(state: .idle, amplitude: 0, size: 100)
+                    Text("NEW MEETING")
+                        .font(LM.Fonts.mono(13, weight: .bold))
+                        .foregroundColor(LM.Colors.cyan)
+                        .tracking(3)
                     if !profileService.userName.isEmpty {
                         Text("Organizer: \(profileService.userName)")
-                            .font(.system(size: 14))
-                            .foregroundColor(DNColors.textSecondary)
+                            .font(LM.Fonts.text(13))
+                            .foregroundColor(LM.Colors.textSecondary)
                     }
                 }
-                .padding(.top, 10)
-                
-                // Quick Add Contacts
+                .padding(.top, LM.Space.md)
+
+                // Quick add contacts
                 if !contactService.savedContacts.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("QUICK ADD")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(DNColors.textTertiary)
-                            .tracking(1.2)
-                            .padding(.horizontal)
-                        
+                    VStack(alignment: .leading, spacing: LM.Space.sm) {
+                        LUMENSectionHeader(title: "Quick Add", icon: "person.fill.badge.plus")
+                            .padding(.horizontal, LM.Space.md)
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 ForEach(contactService.savedContacts) { contact in
                                     Button(action: { toggleAttendee(contact) }) {
-                                        let isSelected = attendees.contains(where: { $0.email == contact.email })
+                                        let sel = attendees.contains(where: { $0.email == contact.email })
                                         VStack(spacing: 6) {
                                             ZStack {
                                                 Circle()
-                                                    .fill(isSelected ? DNColors.accent : DNColors.surface)
+                                                    .fill(sel ? LM.Colors.cyan : LM.Colors.surface)
                                                     .frame(width: 48, height: 48)
+                                                    .shadow(color: sel ? LM.Colors.cyan.opacity(0.4) : .clear, radius: 8)
                                                 Text(String(contact.name.prefix(1)).uppercased())
-                                                    .font(.system(size: 18, weight: .bold))
-                                                    .foregroundColor(isSelected ? .white : DNColors.textSecondary)
+                                                    .font(LM.Fonts.rounded(18, weight: .bold))
+                                                    .foregroundColor(sel ? .black : LM.Colors.textSecondary)
                                             }
                                             Text(contact.name.components(separatedBy: " ").first ?? contact.name)
-                                                .font(.system(size: 11))
-                                                .foregroundColor(isSelected ? DNColors.accent : DNColors.textTertiary)
+                                                .font(LM.Fonts.text(10))
+                                                .foregroundColor(sel ? LM.Colors.cyan : LM.Colors.textTertiary)
                                                 .lineLimit(1)
                                         }
-                                        .frame(width: 72)
+                                        .frame(width: 68)
                                     }
                                 }
                             }
-                            .padding(.horizontal)
+                            .padding(.horizontal, LM.Space.md)
                         }
                     }
                 }
-                
-                // Add New Attendee
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("ADD ATTENDEE")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(DNColors.textTertiary)
-                        .tracking(1.2)
-                        .padding(.horizontal)
-                    
-                    VStack(spacing: 10) {
+
+                // Add attendee
+                VStack(alignment: .leading, spacing: LM.Space.sm) {
+                    LUMENSectionHeader(title: "Add Attendee", icon: "person.badge.plus")
+                        .padding(.horizontal, LM.Space.md)
+                    VStack(spacing: 8) {
+                        HStack(spacing: 8) {
+                            LUMENTextField(placeholder: "Name", text: $newAttendeeName, icon: "person")
+                            LUMENTextField(placeholder: "Email", text: $newAttendeeEmail, icon: "envelope")
+                        }
+                        .padding(.horizontal, LM.Space.md)
                         HStack(spacing: 10) {
-                            DNTextField(placeholder: "Name", text: $newAttendeeName)
-                            DNTextField(placeholder: "Email", text: $newAttendeeEmail)
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
+                            LUMENButton(title: "Add", icon: "plus", style: (newAttendeeEmail.isEmpty || newAttendeeName.isEmpty) ? .ghost : .primary, action: addAttendee)
+                                .disabled(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty)
+                            LUMENButton(title: speechService.isListening ? "Listening..." : "Dictate", icon: speechService.isListening ? "mic.fill" : "mic", style: speechService.isListening ? .danger : .secondary, action: toggleListening)
                         }
-                        .padding(.horizontal)
-                        
-                        HStack(spacing: 12) {
-                            Button(action: addAttendee) {
-                                Label("Add", systemImage: "plus")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(10)
-                                    .background(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty ? DNColors.surface : DNColors.accent)
-                                    .foregroundColor(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty ? DNColors.textTertiary : .white)
-                                    .cornerRadius(10)
-                            }
-                            .disabled(newAttendeeEmail.isEmpty || newAttendeeName.isEmpty)
-                            
-                            Button(action: toggleListening) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: speechService.isListening ? "mic.fill" : "mic")
-                                        .font(.system(size: 14))
-                                    Text(speechService.isListening ? "Listening..." : "Dictate")
-                                        .font(.system(size: 14, weight: .semibold))
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(10)
-                                .background(speechService.isListening ? Color.red.opacity(0.2) : DNColors.surface)
-                                .foregroundColor(speechService.isListening ? .red : DNColors.textSecondary)
-                                .cornerRadius(10)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(speechService.isListening ? Color.red.opacity(0.4) : DNColors.divider, lineWidth: 1))
-                            }
-                        }
-                        .padding(.horizontal)
-                    }
-                    
-                    if speechService.isListening {
-                        HStack(spacing: 3) {
-                            ForEach(0..<20) { _ in
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.red.opacity(0.7))
-                                    .frame(width: 3, height: CGFloat.random(in: 4...20))
-                            }
-                        }
-                        .padding(.horizontal)
-                        .animation(.easeInOut(duration: 0.3).repeatForever(), value: speechService.isListening)
+                        .padding(.horizontal, LM.Space.md)
                     }
                 }
-                
-                // Attendees List
+
+                // Attendees list
                 if !attendees.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("ATTENDEES (\(attendees.count))")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(DNColors.textTertiary)
-                            .tracking(1.2)
-                            .padding(.horizontal)
-                        
-                        VStack(spacing: 1) {
+                    VStack(alignment: .leading, spacing: LM.Space.sm) {
+                        LUMENSectionHeader(title: "Attendees (\(attendees.count))", icon: "person.2.fill")
+                            .padding(.horizontal, LM.Space.md)
+                        VStack(spacing: 2) {
                             ForEach(attendees) { attendee in
                                 HStack(spacing: 12) {
                                     ZStack {
-                                        Circle()
-                                            .fill(DNColors.accent.opacity(0.15))
-                                            .frame(width: 36, height: 36)
+                                        Circle().fill(LM.Colors.cyanGlow).frame(width: 36, height: 36)
                                         Text(String(attendee.name.prefix(1)).uppercased())
-                                            .font(.system(size: 13, weight: .bold))
-                                            .foregroundColor(DNColors.accent)
+                                            .font(LM.Fonts.rounded(13, weight: .bold))
+                                            .foregroundColor(LM.Colors.cyan)
                                     }
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(attendee.name)
-                                            .font(.system(size: 14, weight: .medium))
-                                            .foregroundColor(DNColors.textPrimary)
-                                        Text(attendee.email)
-                                            .font(.system(size: 12))
-                                            .foregroundColor(DNColors.textTertiary)
+                                        Text(attendee.name).font(LM.Fonts.text(14, weight: .medium)).foregroundColor(LM.Colors.textPrimary)
+                                        Text(attendee.email).font(LM.Fonts.mono(11)).foregroundColor(LM.Colors.textTertiary)
                                     }
                                     Spacer()
-                                    Button(action: {
-                                        attendees.removeAll(where: { $0.email == attendee.email })
-                                    }) {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .foregroundColor(DNColors.textTertiary)
-                                            .font(.system(size: 18))
+                                    Button(action: { attendees.removeAll(where: { $0.email == attendee.email }) }) {
+                                        Image(systemName: "xmark.circle.fill").foregroundColor(LM.Colors.textTertiary).font(LM.Fonts.text(16))
                                     }
                                 }
-                                .padding(.horizontal, 14)
+                                .padding(.horizontal, LM.Space.md)
                                 .padding(.vertical, 10)
-                                .background(DNColors.surface)
+                                .background(LM.Colors.surface)
                             }
                         }
-                        .cornerRadius(12)
-                        .padding(.horizontal)
+                        .cornerRadius(LM.Radius.md)
+                        .overlay(RoundedRectangle(cornerRadius: LM.Radius.md).stroke(LM.Colors.borderDim, lineWidth: 1))
+                        .padding(.horizontal, LM.Space.md)
                     }
                 }
-                
+
                 Spacer(minLength: 20)
-                
-                // Start Recording Button
-                Button(action: { recorder.startRecording() }) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 18))
-                        Text("Start Recording")
-                            .font(.system(size: 17, weight: .bold))
+
+                // LUMEN tip
+                if !attendees.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
+                        Text("Say \"Hey Lumen\" during the meeting to ask AI a question")
+                            .font(LM.Fonts.text(12))
+                            .foregroundColor(LM.Colors.textTertiary)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(18)
-                    .background(attendees.isEmpty ? DNColors.surface : DNColors.accent)
-                    .foregroundColor(attendees.isEmpty ? DNColors.textTertiary : .white)
-                    .cornerRadius(16)
-                    .shadow(color: attendees.isEmpty ? .clear : DNColors.accent.opacity(0.4), radius: 16, x: 0, y: 6)
+                    .padding(.horizontal, LM.Space.lg)
+                    .multilineTextAlignment(.center)
+                }
+
+                // Start button
+                LUMENButton(title: "Start Recording", icon: "mic.fill", style: attendees.isEmpty ? .ghost : .primary) {
+                    startRecording()
                 }
                 .disabled(attendees.isEmpty)
-                .padding(.horizontal)
-                .padding(.bottom, 30)
+                .padding(.horizontal, LM.Space.md)
+                .padding(.bottom, LM.Space.xl)
             }
         }
-        .onChange(of: speechService.transcript, perform: { newValue in parseTranscript(newValue) })
+        .onChange(of: speechService.transcript, perform: { v in parseTranscript(v) })
     }
-    
+
+    // MARK: - Recording Section
     private var recordingSection: some View {
-        VStack(spacing: 40) {
-            Spacer()
-            
+        ZStack {
+            // Background grid lines for HUD effect
+            GeometryReader { geo in
+                Path { p in
+                    let spacing: CGFloat = 40
+                    var x: CGFloat = 0
+                    while x < geo.size.width {
+                        p.move(to: CGPoint(x: x, y: 0))
+                        p.addLine(to: CGPoint(x: x, y: geo.size.height))
+                        x += spacing
+                    }
+                    var y: CGFloat = 0
+                    while y < geo.size.height {
+                        p.move(to: CGPoint(x: 0, y: y))
+                        p.addLine(to: CGPoint(x: geo.size.width, y: y))
+                        y += spacing
+                    }
+                }
+                .stroke(LM.Colors.cyan.opacity(0.04), lineWidth: 0.5)
+            }
+            .ignoresSafeArea()
+
             if recorder.isRecording {
-                VStack(spacing: 24) {
-                    // Pulsing mic
-                    ZStack {
-                        Circle()
-                            .fill(Color.red.opacity(0.1))
-                            .frame(width: 120, height: 120)
-                        Circle()
-                            .fill(Color.red.opacity(0.2))
-                            .frame(width: 90, height: 90)
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 64, height: 64)
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 26))
-                            .foregroundColor(.white)
+                VStack(spacing: 0) {
+                    Spacer()
+
+                    // Timer
+                    Text(elapsedFormatted)
+                        .font(LM.Fonts.mono(42, weight: .bold))
+                        .foregroundColor(LM.Colors.textPrimary)
+                        .padding(.bottom, 8)
+
+                    Text("REC")
+                        .font(LM.Fonts.mono(11, weight: .bold))
+                        .foregroundColor(LM.Colors.red)
+                        .tracking(4)
+                        .padding(.bottom, LM.Space.xl)
+
+                    // LUMEN Orb — center stage
+                    LUMENOrbView(
+                        state: lumen.orbState,
+                        amplitude: recorder.audioLevel,
+                        size: 180
+                    )
+                    .onReceive(speechService.$transcript) { t in
+                        lumen.processTranscript(t, fullContext: t)
                     }
-                    
-                    Text("Recording...")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(DNColors.textPrimary)
-                    
-                    // Animated waveform
-                    HStack(spacing: 4) {
-                        ForEach(0..<24) { i in
-                            AnimatedWaveBar(delay: Double(i) * 0.05)
+
+                    // Waveform arcs under orb
+                    HStack(spacing: 3) {
+                        ForEach(0..<32) { i in
+                            LUMENWaveBar(index: i, amplitude: recorder.audioLevel)
                         }
                     }
-                    .frame(height: 60)
-                    .padding(.horizontal, 20)
-                }
-                
-                Button(action: { recorder.stopRecording() }) {
-                    HStack(spacing: 10) {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 16))
-                        Text("Stop Recording")
-                            .font(.system(size: 16, weight: .bold))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(16)
-                    .background(Color.red)
-                    .foregroundColor(.white)
-                    .cornerRadius(14)
-                    .shadow(color: Color.red.opacity(0.4), radius: 12, x: 0, y: 4)
-                }
-                .padding(.horizontal, 40)
-                
-            } else if let url = recorder.recordingURL {
-                VStack(spacing: 20) {
-                    ZStack {
-                        Circle()
-                            .fill(DNColors.successGreen.opacity(0.15))
-                            .frame(width: 90, height: 90)
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundColor(DNColors.successGreen)
-                    }
-                    
-                    Text("Recording Saved")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(DNColors.textPrimary)
-                    
-                    Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap.")
-                        .font(.system(size: 15))
-                        .foregroundColor(DNColors.textSecondary)
-                        .multilineTextAlignment(.center)
-                    
-                    Button(action: { uploadMeeting(url: url) }) {
-                        Group {
-                            if isUploading {
-                                HStack(spacing: 10) {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                                    Text("Uploading...")
-                                        .font(.system(size: 16, weight: .bold))
+                    .frame(height: 50)
+                    .padding(.horizontal, LM.Space.xl)
+                    .padding(.top, LM.Space.lg)
+
+                    Spacer()
+
+                    // Attendees row
+                    if !attendees.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(attendees) { a in
+                                    VStack(spacing: 4) {
+                                        ZStack {
+                                            Circle().fill(LM.Colors.cyanGlow).frame(width: 32, height: 32)
+                                            Text(String(a.name.prefix(1)).uppercased())
+                                                .font(LM.Fonts.rounded(12, weight: .bold))
+                                                .foregroundColor(LM.Colors.cyan)
+                                        }
+                                        Text(a.name.components(separatedBy: " ").first ?? a.name)
+                                            .font(LM.Fonts.text(9))
+                                            .foregroundColor(LM.Colors.textTertiary)
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                Label("Upload & Process", systemImage: "arrow.up.circle.fill")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .frame(maxWidth: .infinity)
                             }
+                            .padding(.horizontal, LM.Space.md)
                         }
-                        .padding(16)
-                        .background(DNColors.accent)
-                        .foregroundColor(.white)
-                        .cornerRadius(14)
-                        .shadow(color: DNColors.accent.opacity(0.4), radius: 12, x: 0, y: 4)
+                        .padding(.bottom, LM.Space.md)
+                    }
+
+                    // Stop button
+                    LUMENButton(title: "Stop Recording", icon: "stop.fill", style: .danger) {
+                        stopRecording()
+                    }
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.bottom, LM.Space.xl)
+                }
+
+            } else if let url = recorder.recordingURL {
+                // Upload section
+                VStack(spacing: LM.Space.lg) {
+                    Spacer()
+                    LUMENOrbView(state: .idle, amplitude: 0, size: 120)
+
+                    Text("RECORDING COMPLETE")
+                        .font(LM.Fonts.mono(13, weight: .bold))
+                        .foregroundColor(LM.Colors.green)
+                        .tracking(2)
+
+                    Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap")
+                        .font(LM.Fonts.text(14))
+                        .foregroundColor(LM.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, LM.Space.xl)
+
+                    Spacer()
+
+                    LUMENButton(title: isUploading ? "Uploading..." : "Upload & Process", icon: isUploading ? nil : "arrow.up.circle.fill", style: .primary) {
+                        uploadMeeting(url: url)
                     }
                     .disabled(isUploading)
-                    .padding(.horizontal, 30)
-                    
-                    Button("Discard Recording") {
-                        recorder.recordingURL = nil
-                    }
-                    .foregroundColor(Color.red.opacity(0.7))
-                    .font(.system(size: 14))
+                    .padding(.horizontal, LM.Space.md)
+
+                    Button("Discard Recording") { recorder.recordingURL = nil }
+                        .font(LM.Fonts.text(13))
+                        .foregroundColor(LM.Colors.red.opacity(0.7))
+                        .padding(.bottom, LM.Space.xl)
                 }
             }
-            
-            Spacer()
         }
     }
-    
-    // MARK: - Helpers (same as before)
+
+    // MARK: - Helpers
+    func startRecording() {
+        recorder.startRecording()
+        speechService.startListening()
+        lumen.reset()
+        elapsedSeconds = 0
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            elapsedSeconds += 1
+            lumen.checkTriggerTimeout()
+        }
+    }
+
+    func stopRecording() {
+        recorder.stopRecording()
+        speechService.stopListening()
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+    }
+
     func addAttendee() {
         guard !newAttendeeEmail.isEmpty, !newAttendeeName.isEmpty else { return }
-        let attendee = Attendee(email: newAttendeeEmail, name: newAttendeeName)
-        if !attendees.contains(where: { $0.email == attendee.email }) {
-            attendees.append(attendee)
-            contactService.saveContact(attendee, via: apiService)
+        let a = Attendee(email: newAttendeeEmail, name: newAttendeeName)
+        if !attendees.contains(where: { $0.email == a.email }) {
+            attendees.append(a)
+            contactService.saveContact(a, via: apiService)
         }
         newAttendeeEmail = ""
         newAttendeeName = ""
     }
-    
+
     func toggleAttendee(_ contact: Attendee) {
-        if let index = attendees.firstIndex(where: { $0.email == contact.email }) {
-            attendees.remove(at: index)
-        } else {
-            attendees.append(contact)
-        }
+        if let i = attendees.firstIndex(where: { $0.email == contact.email }) { attendees.remove(at: i) }
+        else { attendees.append(contact) }
     }
-    
+
     func toggleListening() {
-        if speechService.isListening { speechService.stopListening() }
-        else { speechService.startListening() }
+        if speechService.isListening { speechService.stopListening() } else { speechService.startListening() }
     }
-    
+
     func parseTranscript(_ text: String) {
-        let components = text.components(separatedBy: .whitespacesAndNewlines)
+        let parts = text.components(separatedBy: .whitespacesAndNewlines)
         var nameParts: [String] = []
-        for component in components {
-            if component.contains("@") { newAttendeeEmail = component.lowercased() }
-            else if !component.isEmpty { nameParts.append(component) }
+        for part in parts {
+            if part.contains("@") { newAttendeeEmail = part.lowercased() }
+            else if !part.isEmpty { nameParts.append(part) }
         }
         if !nameParts.isEmpty { newAttendeeName = nameParts.joined(separator: " ") }
     }
-    
+
     func uploadMeeting(url: URL) {
         isUploading = true
         Task {
@@ -389,38 +408,37 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 }
 
-// MARK: - Animated Waveform Bar
-struct AnimatedWaveBar: View {
-    let delay: Double
-    @State private var height: CGFloat = 8
-    
+// MARK: - LUMEN Wave Bar (amplitude-reactive)
+struct LUMENWaveBar: View {
+    let index: Int
+    let amplitude: Float
+    @State private var height: CGFloat = 6
+
+    private var targetHeight: CGFloat {
+        let pattern: [CGFloat] = [10, 20, 35, 25, 15, 40, 20, 30, 45, 18,
+                                   38, 28, 16, 44, 12, 32, 24, 42, 10, 22,
+                                   36, 16, 44, 20, 30, 14, 38, 26, 10, 24, 40, 18]
+        let base = pattern[index % pattern.count]
+        return base * (0.4 + CGFloat(amplitude) * 0.6)
+    }
+
     var body: some View {
-        RoundedRectangle(cornerRadius: 3)
-            .fill(Color.red.opacity(0.8))
-            .frame(width: 4, height: height)
+        RoundedRectangle(cornerRadius: 2)
+            .fill(
+                LinearGradient(
+                    colors: [LM.Colors.cyan, LM.Colors.blue.opacity(0.6)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: 3, height: height)
             .onAppear {
-                withAnimation(Animation.easeInOut(duration: Double.random(in: 0.4...0.8)).repeatForever(autoreverses: true).delay(delay)) {
-                    height = CGFloat.random(in: 12...52)
+                withAnimation(Animation.easeInOut(duration: Double.random(in: 0.3...0.7)).repeatForever(autoreverses: true).delay(Double(index) * 0.04)) {
+                    height = targetHeight
                 }
             }
-    }
-}
-
-// MARK: - DN Text Field
-struct DNTextField: View {
-    let placeholder: String
-    @Binding var text: String
-    
-    var body: some View {
-        TextField("", text: $text)
-            .placeholder(when: text.isEmpty) {
-                Text(placeholder).foregroundColor(DNColors.textTertiary)
-            }
-            .foregroundColor(DNColors.textPrimary)
-            .padding(10)
-            .background(DNColors.surface)
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(DNColors.divider, lineWidth: 1))
-            .font(.system(size: 14))
+            .onChange(of: amplitude, perform: { _ in
+                withAnimation(.easeOut(duration: 0.1)) { height = targetHeight }
+            })
     }
 }

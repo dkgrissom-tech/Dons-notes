@@ -1,6 +1,6 @@
 import Foundation
 
-class RealAPIService: APIServiceProtocol {
+class RealAPIService: ObservableObject, APIServiceProtocol {
     private let baseURL = URL(string: "https://api.donsnotes.com/v1")!
     
     func uploadMeeting(audioURL: URL, attendees: [Attendee], organizerName: String?) async throws -> Meeting {

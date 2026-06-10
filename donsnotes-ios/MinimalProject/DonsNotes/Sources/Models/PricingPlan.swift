@@ -2,32 +2,78 @@ import Foundation
 
 enum SubscriptionTier: String, CaseIterable, Identifiable {
     case free
+    case pro
+    case lumenPro
     case lifetime
-    case monthly
-    
+
     var id: String { self.rawValue }
-    
+
     var title: String {
         switch self {
-        case .free: return "Free"
+        case .free:     return "Free"
+        case .pro:      return "Pro"
+        case .lumenPro: return "Lumen Pro"
         case .lifetime: return "Lifetime"
-        case .monthly: return "Monthly"
         }
     }
-    
+
     var price: String {
         switch self {
-        case .free: return "$0"
-        case .lifetime: return "$4.99"
-        case .monthly: return "$4.99/mo"
+        case .free:     return "$0"
+        case .pro:      return "$12.99/mo"
+        case .lumenPro: return "$19.99/mo"
+        case .lifetime: return "$149"
         }
     }
-    
-    var description: String {
+
+    var badge: String? {
         switch self {
-        case .free: return "15 minutes of transcription per month. Great for trying it out."
-        case .lifetime: return "3 hours of transcription per month, forever. One-time purchase."
-        case .monthly: return "Unlimited transcription, longer summaries, custom templates, and unlimited recipients."
+        case .lumenPro: return "POPULAR"
+        case .lifetime: return "BEST VALUE"
+        default:        return nil
         }
+    }
+
+    var features: [String] {
+        switch self {
+        case .free:
+            return [
+                "3 meetings/month",
+                "Basic transcription",
+                "7-day history"
+            ]
+        case .pro:
+            return [
+                "Unlimited meetings",
+                "AI summaries & action items",
+                "Audio playback with speed control",
+                "Full-text search",
+                "Cloud sync",
+                "Export (PDF, TXT)"
+            ]
+        case .lumenPro:
+            return [
+                "Everything in Pro",
+                "Hey Lumen voice trigger",
+                "Live Q&A during meetings",
+                "Voice responses (ElevenLabs)",
+                "Post-meeting AI chat",
+                "LUMEN Insights panel",
+                "Calendar integration",
+                "Boardroom silent mode"
+            ]
+        case .lifetime:
+            return [
+                "All Pro features",
+                "One-time payment — no subscription",
+                "All future Pro updates included",
+                "Priority support",
+                "Launch offer pricing"
+            ]
+        }
+    }
+
+    var isHighlighted: Bool {
+        self == .lumenPro
     }
 }

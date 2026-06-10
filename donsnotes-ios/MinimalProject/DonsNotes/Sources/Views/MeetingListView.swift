@@ -4,21 +4,6 @@ extension Notification.Name {
     static let startRecording = Notification.Name("startRecording")
 }
 
-// MARK: - Design Tokens
-struct DNColors {
-    static let background = Color(red: 0.06, green: 0.07, blue: 0.10)
-    static let surface = Color(red: 0.10, green: 0.12, blue: 0.17)
-    static let surfaceElevated = Color(red: 0.13, green: 0.16, blue: 0.22)
-    static let accent = Color(red: 0.22, green: 0.55, blue: 1.0)
-    static let accentGlow = Color(red: 0.22, green: 0.55, blue: 1.0).opacity(0.15)
-    static let textPrimary = Color.white
-    static let textSecondary = Color(white: 0.65)
-    static let textTertiary = Color(white: 0.42)
-    static let divider = Color(white: 1.0).opacity(0.06)
-    static let successGreen = Color(red: 0.2, green: 0.85, blue: 0.6)
-    static let warningAmber = Color(red: 1.0, green: 0.75, blue: 0.2)
-}
-
 struct MeetingListView<T: APIServiceProtocol>: View {
     @ObservedObject var apiService: T
     @State private var meetings: [Meeting] = []
@@ -27,9 +12,11 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     @State private var isShowingPricing = false
     @State private var isLoading = false
     @State private var searchText = ""
-    
-    private let hasSeenPricingKey = "has_seen_pricing_v1"
-    
+    @State private var showOnboarding = false
+
+    private let hasSeenOnboardingKey = "lumen_onboarding_v1"
+    private let hasSeenPricingKey = "has_seen_pricing_v2"
+
     var filteredMeetings: [Meeting] {
         if searchText.isEmpty { return meetings }
         let q = searchText.lowercased()
@@ -40,102 +27,115 @@ struct MeetingListView<T: APIServiceProtocol>: View {
             ($0.organizerName?.lowercased().contains(q) ?? false)
         }
     }
-    
+
     var body: some View {
         NavigationView {
             ZStack {
-                DNColors.background.ignoresSafeArea()
-                
+                LM.Colors.void.ignoresSafeArea()
+
+                // Subtle grid background
+                GeometryReader { geo in
+                    Path { p in
+                        let s: CGFloat = 44
+                        var x: CGFloat = 0
+                        while x < geo.size.width { p.move(to: CGPoint(x: x, y: 0)); p.addLine(to: CGPoint(x: x, y: geo.size.height)); x += s }
+                        var y: CGFloat = 0
+                        while y < geo.size.height { p.move(to: CGPoint(x: 0, y: y)); p.addLine(to: CGPoint(x: geo.size.width, y: y)); y += s }
+                    }
+                    .stroke(LM.Colors.cyan.opacity(0.03), lineWidth: 0.5)
+                }
+                .ignoresSafeArea()
+
                 VStack(spacing: 0) {
-                    // Search bar
+                    // Search
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
-                            .foregroundColor(DNColors.textTertiary)
-                            .font(.system(size: 15))
+                            .font(LM.Fonts.text(14))
+                            .foregroundColor(LM.Colors.textTertiary)
                         TextField("", text: $searchText)
                             .placeholder(when: searchText.isEmpty) {
-                                Text("Search meetings...").foregroundColor(DNColors.textTertiary)
+                                Text("Search meetings...").foregroundColor(LM.Colors.textGhost)
                             }
-                            .foregroundColor(DNColors.textPrimary)
-                            .font(.system(size: 15))
+                            .foregroundColor(LM.Colors.textPrimary)
+                            .font(LM.Fonts.text(14))
                         if !searchText.isEmpty {
                             Button(action: { searchText = "" }) {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(DNColors.textTertiary)
-                                    .font(.system(size: 14))
+                                    .foregroundColor(LM.Colors.textTertiary)
+                                    .font(LM.Fonts.text(13))
                             }
                         }
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(DNColors.surface)
-                    .cornerRadius(12)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    
+                    .background(LM.Colors.surface)
+                    .cornerRadius(LM.Radius.sm)
+                    .overlay(RoundedRectangle(cornerRadius: LM.Radius.sm).stroke(LM.Colors.borderDim, lineWidth: 1))
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.top, LM.Space.sm)
+                    .padding(.bottom, LM.Space.md)
+
                     if isLoading && meetings.isEmpty {
                         Spacer()
                         VStack(spacing: 16) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: DNColors.accent))
-                                .scaleEffect(1.3)
-                            Text("Loading meetings...")
-                                .font(.system(size: 14))
-                                .foregroundColor(DNColors.textSecondary)
+                            LUMENOrbView(state: .idle, amplitude: 0, size: 80)
+                            Text("LOADING...")
+                                .font(LM.Fonts.mono(11, weight: .bold))
+                                .foregroundColor(LM.Colors.textTertiary)
+                                .tracking(3)
                         }
                         Spacer()
                     } else if filteredMeetings.isEmpty {
                         Spacer()
-                        VStack(spacing: 12) {
-                            Image(systemName: searchText.isEmpty ? "waveform.badge.mic" : "magnifyingglass")
-                                .font(.system(size: 44))
-                                .foregroundColor(DNColors.textTertiary)
-                            Text(searchText.isEmpty ? "No meetings yet" : "No results found")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundColor(DNColors.textSecondary)
+                        VStack(spacing: 16) {
+                            LUMENOrbView(state: .dormant, amplitude: 0, size: 80)
+                            Text(searchText.isEmpty ? "NO MEETINGS YET" : "NO RESULTS FOUND")
+                                .font(LM.Fonts.mono(12, weight: .bold))
+                                .foregroundColor(LM.Colors.textTertiary)
+                                .tracking(2)
                             if searchText.isEmpty {
-                                Text("Tap + to record your first meeting")
-                                    .font(.system(size: 14))
-                                    .foregroundColor(DNColors.textTertiary)
+                                Text("Tap + to start your first meeting")
+                                    .font(LM.Fonts.text(13))
+                                    .foregroundColor(LM.Colors.textGhost)
                             }
                         }
                         Spacer()
                     } else {
                         ScrollView {
-                            LazyVStack(spacing: 12) {
+                            LazyVStack(spacing: 10) {
                                 ForEach(filteredMeetings) { meeting in
                                     NavigationLink(destination: MeetingDetailView(meeting: meeting, apiService: apiService)) {
-                                        MeetingCard(meeting: meeting)
+                                        LUMENMeetingCard(meeting: meeting)
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 24)
+                            .padding(.horizontal, LM.Space.md)
+                            .padding(.bottom, LM.Space.xl)
                         }
                     }
                 }
             }
-            .navigationTitle("Don's Notes")
+            .navigationTitle("LUMEN")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 10) {
                         Button(action: { isShowingProfile = true }) {
                             Image(systemName: "person.circle")
-                                .font(.system(size: 18))
-                                .foregroundColor(DNColors.textSecondary)
+                                .font(LM.Fonts.text(17))
+                                .foregroundColor(LM.Colors.textSecondary)
                         }
                         Button(action: { isShowingRecording = true }) {
                             ZStack {
                                 Circle()
-                                    .fill(DNColors.accent)
+                                    .fill(LM.Colors.cyan)
                                     .frame(width: 32, height: 32)
+                                    .shadow(color: LM.Colors.cyan.opacity(0.5), radius: 8)
                                 Image(systemName: "plus")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.white)
+                                    .font(LM.Fonts.text(14, weight: .bold))
+                                    .foregroundColor(.black)
                             }
                         }
                     }
@@ -143,8 +143,8 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: refresh) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15))
-                            .foregroundColor(DNColors.textSecondary)
+                            .font(LM.Fonts.text(14))
+                            .foregroundColor(isLoading ? LM.Colors.cyan : LM.Colors.textSecondary)
                     }
                     .rotationEffect(.degrees(isLoading ? 360 : 0))
                     .animation(isLoading ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isLoading)
@@ -159,10 +159,16 @@ struct MeetingListView<T: APIServiceProtocol>: View {
             .sheet(isPresented: $isShowingPricing) {
                 PlansView()
             }
+            .fullScreenCover(isPresented: $showOnboarding) {
+                OnboardingView(isPresented: $showOnboarding)
+            }
             .onAppear {
-                self.meetings = MeetingCacheService.shared.loadMeetings()
+                meetings = MeetingCacheService.shared.loadMeetings()
                 refresh()
-                if !UserDefaults.standard.bool(forKey: hasSeenPricingKey) {
+                if !UserDefaults.standard.bool(forKey: hasSeenOnboardingKey) {
+                    showOnboarding = true
+                    UserDefaults.standard.set(true, forKey: hasSeenOnboardingKey)
+                } else if !UserDefaults.standard.bool(forKey: hasSeenPricingKey) {
                     isShowingPricing = true
                     UserDefaults.standard.set(true, forKey: hasSeenPricingKey)
                 }
@@ -173,15 +179,15 @@ struct MeetingListView<T: APIServiceProtocol>: View {
         }
         .preferredColorScheme(.dark)
     }
-    
+
     func refresh() {
         isLoading = true
         Task {
             do {
-                let fetchedMeetings = try await apiService.fetchMeetings()
+                let fetched = try await apiService.fetchMeetings()
                 await MainActor.run {
-                    self.meetings = fetchedMeetings.sorted(by: { $0.createdAt > $1.createdAt })
-                    MeetingCacheService.shared.saveMeetings(self.meetings)
+                    meetings = fetched.sorted(by: { $0.createdAt > $1.createdAt })
+                    MeetingCacheService.shared.saveMeetings(meetings)
                     isLoading = false
                 }
             } catch {
@@ -191,97 +197,79 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     }
 }
 
-// MARK: - Meeting Card
-struct MeetingCard: View {
+// MARK: - LUMEN Meeting Card
+struct LUMENMeetingCard: View {
     let meeting: Meeting
-    
+
     private var dateString: String {
-        let fmt = DateFormatter()
-        fmt.dateStyle = .medium
-        fmt.timeStyle = .short
-        return fmt.string(from: meeting.createdAt)
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short
+        return f.string(from: meeting.createdAt)
     }
-    
-    private var previewText: String {
-        if let summary = meeting.summary, !summary.isEmpty {
-            return summary.prefix(120) + (summary.count > 120 ? "..." : "")
-        }
-        return "Processing..."
+
+    private var preview: String {
+        if let s = meeting.summary, !s.isEmpty { return String(s.prefix(110)) + (s.count > 110 ? "..." : "") }
+        return meeting.status.isProcessing ? "Processing with LUMEN..." : "Tap to view"
     }
-    
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header row
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(dateString)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(DNColors.textPrimary)
-                    if let organizer = meeting.organizerName, !organizer.isEmpty {
-                        Text(organizer)
-                            .font(.system(size: 12))
-                            .foregroundColor(DNColors.textTertiary)
+        HStack(spacing: 0) {
+            // Left accent bar
+            Rectangle()
+                .fill(meeting.status.isProcessing ? LM.Colors.cyan : LM.Colors.cyan.opacity(0.3))
+                .frame(width: 3)
+                .cornerRadius(2)
+
+            VStack(alignment: .leading, spacing: 10) {
+                // Header
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(dateString)
+                            .font(LM.Fonts.text(15, weight: .semibold))
+                            .foregroundColor(LM.Colors.textPrimary)
+                        if let org = meeting.organizerName, !org.isEmpty {
+                            Text(org)
+                                .font(LM.Fonts.mono(10))
+                                .foregroundColor(LM.Colors.textTertiary)
+                                .tracking(0.5)
+                        }
                     }
+                    Spacer()
+                    LUMENStatusBadge(status: meeting.status)
                 }
-                Spacer()
-                StatusPill(status: meeting.status)
+
+                // Preview
+                Text(preview)
+                    .font(LM.Fonts.text(13))
+                    .foregroundColor(LM.Colors.textSecondary)
+                    .lineLimit(2)
+
+                // Footer
+                HStack(spacing: 14) {
+                    if !meeting.attendees.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.2.fill").font(LM.Fonts.text(10)).foregroundColor(LM.Colors.textTertiary)
+                            Text("\(meeting.attendees.count)").font(LM.Fonts.mono(11)).foregroundColor(LM.Colors.textTertiary)
+                        }
+                    }
+                    if let items = meeting.actionItems, !items.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill").font(LM.Fonts.text(10)).foregroundColor(LM.Colors.cyan.opacity(0.7))
+                            Text("\(items.count) actions").font(LM.Fonts.mono(11)).foregroundColor(LM.Colors.cyan.opacity(0.7))
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(LM.Fonts.text(10, weight: .bold))
+                        .foregroundColor(LM.Colors.textGhost)
+                }
             }
-            
-            // Preview
-            Text(previewText)
-                .font(.system(size: 14))
-                .foregroundColor(DNColors.textSecondary)
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            
-            // Footer
-            HStack(spacing: 16) {
-                if !meeting.attendees.isEmpty {
-                    Label("\(meeting.attendees.count) attendee\(meeting.attendees.count == 1 ? "" : "s")", systemImage: "person.2")
-                        .font(.system(size: 12))
-                        .foregroundColor(DNColors.textTertiary)
-                }
-                if let items = meeting.actionItems, !items.isEmpty {
-                    Label("\(items.count) action\(items.count == 1 ? "" : "s")", systemImage: "checkmark.circle")
-                        .font(.system(size: 12))
-                        .foregroundColor(DNColors.accent.opacity(0.8))
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(DNColors.textTertiary)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
         }
-        .padding(16)
-        .background(DNColors.surface)
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(meeting.status.isProcessing ? DNColors.accent.opacity(0.3) : DNColors.divider, lineWidth: 1)
-        )
+        .background(LM.Colors.surface)
+        .cornerRadius(LM.Radius.md)
+        .overlay(RoundedRectangle(cornerRadius: LM.Radius.md).stroke(LM.Colors.borderDim, lineWidth: 1))
+        .shadow(color: meeting.status.isProcessing ? LM.Colors.cyan.opacity(0.06) : .clear, radius: 12)
     }
 }
 
-// MARK: - Status Pill
-struct StatusPill: View {
-    let status: MeetingStatus
-    var body: some View {
-        Text(status.displayName)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(status.color)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(status.color.opacity(0.15))
-            .cornerRadius(20)
-    }
-}
-
-// MARK: - TextField Placeholder Extension
-extension View {
-    func placeholder<Content: View>(when shouldShow: Bool, alignment: Alignment = .leading, @ViewBuilder placeholder: () -> Content) -> some View {
-        ZStack(alignment: alignment) {
-            placeholder().opacity(shouldShow ? 1 : 0)
-            self
-        }
-    }
-}
