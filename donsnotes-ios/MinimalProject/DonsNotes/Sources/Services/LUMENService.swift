@@ -221,9 +221,7 @@ class LUMENService: ObservableObject {
     }
     
     func dismissResponse() {
-        withAnimation(.easeOut(duration: 0.3)) {
-            isShowingResponse = false
-        }
+        isShowingResponse = false
     }
     
     func reset() {

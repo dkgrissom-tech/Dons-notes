@@ -160,7 +160,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                 PlansView()
             }
             .fullScreenCover(isPresented: $showOnboarding) {
-                OnboardingView(isPresented: $showOnboarding)
+                OnboardingView()
             }
             .onAppear {
                 meetings = MeetingCacheService.shared.loadMeetings()
