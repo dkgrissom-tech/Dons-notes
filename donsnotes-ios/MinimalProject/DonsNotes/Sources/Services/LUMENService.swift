@@ -296,14 +296,19 @@ final class LUMENService: ObservableObject {
 
     // Called when user taps the orb during recording.
     // Plays "Yes." and waits for them to speak their question.
+    // isAwake is intentionally delayed 1.5s so the TTS audio ("Yes.") doesn't
+    // bleed into the speech recogniser and get captured as the question.
     func orbTapped(currentTranscript: String) {
         guard orbState == .listening else { return }  // only wake when idle-listening
-        isAwake = true
-        wakeTranscriptLength = currentTranscript.count  // mark where question starts
         orbState = .triggered
         speakWake()  // British guy says "Yes."
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            if self.isAwake { self.orbState = .listening }
+        // Delay activating question-capture until TTS has finished speaking (~1.5s)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self else { return }
+            // Snapshot transcript length HERE so we only capture words spoken after the beep
+            self.wakeTranscriptLength = currentTranscript.count
+            self.isAwake = true
+            self.orbState = .listening
         }
     }
 
