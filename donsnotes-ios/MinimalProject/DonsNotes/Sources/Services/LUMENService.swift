@@ -110,6 +110,7 @@ class LUMENService: ObservableObject {
             captureNextSentence = true
             triggerDetectedAt = Date()
             questionBuffer = ""
+            speakAck()   // immediate audible "On it." while we wait for the question
             // Strip the trigger phrase itself from what we capture next
             let afterTrigger = cleanedText
                 .components(separatedBy: triggerPhrase).last?
@@ -225,31 +226,46 @@ class LUMENService: ObservableObject {
     // MARK: - ElevenLabs TTS
     func speak(text: String) async {
         guard isVoiceEnabled else { return }
-        
+
         let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(elevenLabsVoiceId)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(elevenLabsKey, forHTTPHeaderField: "xi-api-key")
-        
+
         let body: [String: Any] = [
             "text": text,
             "model_id": "eleven_turbo_v2",
             "voice_settings": ["stability": 0.5, "similarity_boost": 0.8]
         ]
-        
+
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return }
-            
-            try AVAudioSession.sharedInstance().setCategory(.playback, options: .duckOthers)
-            try AVAudioSession.sharedInstance().setActive(true)
+
+            // Keep .playAndRecord so the mic stays alive during playback.
+            // .duckOthers lowers the recording input so LUMEN's voice is clearly audible.
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement,
+                                    options: [.duckOthers, .defaultToSpeaker])
+            try session.setActive(true, options: .notifyOthersOnDeactivation)
+
             audioPlayer = try AVAudioPlayer(data: data)
+            audioPlayer?.delegate = audioPlayerDelegate
             audioPlayer?.play()
         } catch {
             print("LUMEN TTS error: \(error)")
         }
+    }
+
+    // AVAudioPlayerDelegate — no-op, just keeps the reference alive
+    private lazy var audioPlayerDelegate: AudioPlayerEndDelegate = AudioPlayerEndDelegate()
+
+    // Quick spoken acknowledgement when trigger fires, before answer is ready
+    func speakAck() {
+        guard isVoiceEnabled else { return }
+        Task { await speak(text: "On it.") }
     }
     
     func dismissResponse() {
@@ -263,5 +279,12 @@ class LUMENService: ObservableObject {
         pendingQuestion = ""
         orbState = .idle
         isShowingResponse = false
+    }
+}
+
+// MARK: - Audio Player Delegate (keeps AVAudioPlayer alive through playback)
+private class AudioPlayerEndDelegate: NSObject, AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        // Mic session stays active — nothing to restore since we kept .playAndRecord
     }
 }
