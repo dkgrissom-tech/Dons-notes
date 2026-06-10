@@ -90,9 +90,18 @@ struct LUMENOrbView: View {
     private var coreSize: CGFloat { size * 0.38 }
 
     var body: some View {
+        // ── Verified correct: amp IS read INSIDE the TimelineView closure ──────────
+        //
+        // TimelineView(.animation) redraws every frame (~60 fps). Each frame the closure
+        // runs fresh and calls `speechService.audioLevel` to read the current value.
+        // @ObservedObject on speechService also triggers a SwiftUI body re-render whenever
+        // audioLevel publishes, but since TimelineView already redraws every frame that
+        // re-render is redundant (harmless). The critical point is that `amp` is computed
+        // INSIDE the TimelineView closure — NOT outside it — so every frame gets the latest
+        // audioLevel without any stale-capture issue.
         TimelineView(.animation) { timeline in
             let t   = timeline.date.timeIntervalSinceReferenceDate
-            let amp = CGFloat(speechService.audioLevel)
+            let amp = CGFloat(speechService.audioLevel)   // ← inside TimelineView — correct
             let v   = OrbValues(state: state, amp: amp, t: t,
                                 triggerScale: triggerScale,
                                 triggerFlash: triggerFlash)
@@ -213,7 +222,7 @@ struct LUMENOrbView: View {
                 }
             }
         }
-        .onChange(of: state) { _, newState in
+        .onChange(of: state) { _, newState in    // iOS 17+ two-parameter form
             guard newState == .triggered else { return }
             triggerFlash = 0.90
             triggerScale = 1.18

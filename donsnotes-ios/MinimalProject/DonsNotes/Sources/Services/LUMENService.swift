@@ -36,6 +36,14 @@ class LUMENService: ObservableObject {
     private var pendingQuestion: String = ""
     private var questionBuffer: String = ""
     private var triggerDetectedAt: Date? = nil
+
+    // ── FIX: rolling lookback for cross-chunk trigger detection ──────────────
+    // iOS speech recognition delivers partial results in chunks. "Hey," may arrive
+    // in one chunk and "Lumen." in the next. The old sliding-window only examined
+    // NEW words in the current chunk, so a trigger split across chunks was missed.
+    // We keep the last 2 cleaned words from the previous chunk and prepend them
+    // when building the window for the current chunk.
+    private var previousChunkTailWords: [String] = []
     
     // Audio synthesis (ElevenLabs)
     private var audioPlayer: AVAudioPlayer?
@@ -68,11 +76,17 @@ class LUMENService: ObservableObject {
         let newWords = Array(allWords[lastProcessedWordCount...])
         lastProcessedWordCount = allWords.count
 
-        let newText = newWords.joined(separator: " ").lowercased()
-        guard !newText.isEmpty else { return }
+        guard !newWords.isEmpty else { return }
 
         if captureNextSentence {
-            questionBuffer += " " + newText
+            // Strip punctuation per-word and join for clean question text
+            let cleanNewText = newWords
+                .map { wordStrippingAllPunctuation($0).lowercased() }
+                .filter { !$0.isEmpty }
+                .joined(separator: " ")
+            guard !cleanNewText.isEmpty else { return }
+
+            questionBuffer += questionBuffer.isEmpty ? cleanNewText : " " + cleanNewText
             let trimmed = questionBuffer.trimmingCharacters(in: .whitespaces)
             // Collect until we have a meaningful question (3+ chars — even short commands work)
             if trimmed.count > 3 {
@@ -81,38 +95,73 @@ class LUMENService: ObservableObject {
                 questionBuffer = ""
                 triggerQuestion(question: pendingQuestion, context: fullContext)
             }
+            // Update tail for next chunk regardless
+            updateTailWords(from: newWords)
             return
         }
 
-        // Detect "hey lumen" — three strategies to handle all speech recognition variations:
-        // 1. newText contains the phrase as a substring (catches "hey lumen." with punctuation)
-        // 2. Sliding 2-word window on cleaned words (catches cross-chunk splits)
-        // 3. Single word equals the phrase (shouldn't happen but safety net)
-        let triggerFound: Bool
-        let cleanedText = newText.trimmingCharacters(in: .punctuationCharacters)
-        if cleanedText.contains(triggerPhrase) {
-            triggerFound = true
-        } else {
-            let windowWords = newWords.map { $0.lowercased()
-                .trimmingCharacters(in: .punctuationCharacters) }
-            var found = false
+        // ── FIX: Per-word punctuation stripping before trigger detection ─────────────────
+        //
+        // OLD CODE (buggy):
+        //   let cleanedText = newText.trimmingCharacters(in: .punctuationCharacters)
+        //   if cleanedText.contains(triggerPhrase) { ... }
+        //
+        // PROBLEM: `.trimmingCharacters` only strips punctuation from the START and END of
+        // the full string. Internal punctuation (e.g. the comma in "Hey, Lumen.") remains.
+        // So "hey, lumen".contains("hey lumen") → FALSE. Trigger never fires.
+        //
+        // The existing sliding-window DID strip per-word with `.trimmingCharacters`, BUT it
+        // only operated on newWords from the CURRENT chunk. If the recognizer delivered "Hey,"
+        // in one partial result and "Lumen." in the next, the window only saw ["Lumen."] in
+        // the second chunk, couldn't form the pair, and missed the trigger.
+        //
+        // FIX STRATEGY:
+        // 1. Strip ALL punctuation characters from EACH word individually (not just trim ends).
+        //    Use a CharacterSet approach to remove every punctuation character in the word.
+        // 2. Use previousChunkTailWords (last 2 cleaned words from the prior chunk) prepended
+        //    to the current chunk's cleaned words when doing the sliding window check.
+        //    This catches cross-chunk "Hey, [chunk boundary] Lumen." splits.
+        // 3. Also do a fast .contains check on the fully-cleaned joined string as a first pass.
+
+        // Clean each new word by stripping ALL punctuation (not just trimming ends)
+        let cleanedNewWords = newWords.map { wordStrippingAllPunctuation($0).lowercased() }
+            .filter { !$0.isEmpty }
+
+        guard !cleanedNewWords.isEmpty else {
+            updateTailWords(from: newWords)
+            return
+        }
+
+        // Fast path: joined cleaned words contain the trigger phrase
+        let cleanedJoined = cleanedNewWords.joined(separator: " ")
+        var triggerFound = cleanedJoined.contains(triggerPhrase)
+
+        // Sliding window path (handles cross-chunk splits via lookback tail)
+        if !triggerFound {
+            // Prepend last 2 cleaned words from previous chunk to form the search window
+            let windowWords = previousChunkTailWords + cleanedNewWords
             for i in 0..<windowWords.count {
                 let single = windowWords[i]
-                let pair = i + 1 < windowWords.count ? single + " " + windowWords[i + 1] : single
+                let pair   = i + 1 < windowWords.count ? single + " " + windowWords[i + 1] : single
                 if pair == triggerPhrase || single == triggerPhrase {
-                    found = true; break
+                    triggerFound = true
+                    break
                 }
             }
-            triggerFound = found
         }
+
+        // Update tail BEFORE handling the trigger (tail is for the next chunk)
+        updateTailWords(from: newWords)
 
         if triggerFound {
             captureNextSentence = true
             triggerDetectedAt = Date()
             questionBuffer = ""
             speakAck()   // immediate audible "On it." while we wait for the question
-            // Strip the trigger phrase itself from what we capture next
-            let afterTrigger = cleanedText
+
+            // Strip the trigger phrase itself from what we capture next.
+            // Work from the cleaned joined string so we don't re-introduce punctuation.
+            let afterTrigger = cleanedJoined
                 .components(separatedBy: triggerPhrase).last?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !afterTrigger.isEmpty {
@@ -127,7 +176,27 @@ class LUMENService: ObservableObject {
             return
         }
     }
-    
+
+    // MARK: - Helpers
+
+    /// Remove every punctuation character from a word (not just trim ends).
+    /// Handles "Hey," → "Hey", "Lumen." → "Lumen", "Hey!" → "Hey",
+    /// and edge cases like "hey...lumen" → "heylumen" (uncommon from speech).
+    private func wordStrippingAllPunctuation(_ word: String) -> String {
+        word.unicodeScalars
+            .filter { !CharacterSet.punctuationCharacters.union(.symbols).contains($0) }
+            .reduce("") { $0 + String($1) }
+    }
+
+    /// Keep the last 2 cleaned words from `words` as the lookback tail for the next chunk.
+    private func updateTailWords(from words: [String]) {
+        let cleaned = words
+            .map { wordStrippingAllPunctuation($0).lowercased() }
+            .filter { !$0.isEmpty }
+        // Store at most 2 words to detect 2-word trigger phrase across chunk boundaries
+        previousChunkTailWords = Array(cleaned.suffix(2))
+    }
+
     // Called if no follow-up detected within 3 seconds of trigger
     func checkTriggerTimeout() {
         guard captureNextSentence, let triggeredAt = triggerDetectedAt else { return }
@@ -277,6 +346,7 @@ class LUMENService: ObservableObject {
         captureNextSentence = false
         questionBuffer = ""
         pendingQuestion = ""
+        previousChunkTailWords = []    // ← also reset the lookback tail on session reset
         orbState = .idle
         isShowingResponse = false
     }

@@ -82,6 +82,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
             .onAppear {
                 Task { await contactService.syncContacts(from: apiService) }
             }
+            // ── FIX: transcript observer attached to the outer view ──────────────────
+            // Previously, .onReceive was chained onto LUMENOrbView inside recordingSection.
+            // While technically functional, a view modifier on a conditionally rendered child
+            // can be recreated/destroyed as SwiftUI diffs the tree, causing missed emissions
+            // during transitions. Attaching .onReceive here — on the stable NavigationView
+            // content — guarantees it is always active while RecordingView is on screen.
+            .onReceive(speechService.$transcript) { t in
+                // Only process transcript for trigger detection during active recording
+                guard recorder.isRecording else { return }
+                lumen.processTranscript(t, fullContext: t)
+            }
         }
         .preferredColorScheme(.dark)
     }
@@ -91,7 +102,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
         ScrollView {
             VStack(spacing: LM.Space.lg) {
 
-                // LUMEN header
+                // LUMEN header — decorative orb uses a throwaway SpeechRecognizerService
+                // instance that never starts listening. That is intentional: this orb is
+                // purely decorative (idle state breathing only, no amplitude needed).
                 VStack(spacing: 10) {
                     LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 100)
                     Text("NEW MEETING")
@@ -256,18 +269,26 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         .tracking(4)
                         .padding(.bottom, LM.Space.xl)
 
-                    // LUMEN Orb — center stage
-                    // recorder passed as @ObservedObject so orb owns the audioLevel subscription
+                    // ── FIX: Live orb receives the SAME speechService instance that
+                    // startListening() was called on. This is `self.speechService` — the
+                    // @StateObject created once for the lifetime of RecordingView. It is
+                    // NOT a new SpeechRecognizerService(). The decorative orbs on setup and
+                    // upload screens DO use `SpeechRecognizerService()` throwaway instances —
+                    // those are intentionally idle. The live orb here uses the real one. ✓
+                    //
+                    // FIX: lumen.orbState is set to .listening in startRecording() so the
+                    // orb reacts to amplitude immediately. Previously orbState stayed .idle
+                    // the entire recording (until "hey lumen" triggered), meaning the orb
+                    // breathed gently but never pulsed with the speaker's voice.
                     LUMENOrbView(
                         state: lumen.orbState,
-                        speechService: speechService,
+                        speechService: speechService,   // ← same instance startListening() runs on
                         size: 180
                     )
-                    .onReceive(speechService.$transcript) { t in
-                        lumen.processTranscript(t, fullContext: t)
-                    }
+                    // Note: .onReceive for lumen.processTranscript has been moved to the outer
+                    // NavigationView content (see body above) for stability across transitions.
 
-                    // Waveform — recorder passed directly for live amplitude
+                    // Waveform — receives same speechService for live amplitude
                     LUMENWaveformView(speechService: speechService)
                         .padding(.horizontal, LM.Space.xl)
                         .padding(.top, LM.Space.lg)
@@ -306,7 +327,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 }
 
             } else if let url = recorder.recordingURL {
-                // Upload section
+                // Upload section — decorative idle orb (new instance, never listens, correct)
                 VStack(spacing: LM.Space.lg) {
                     Spacer()
                     LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 120)
@@ -344,6 +365,12 @@ struct RecordingView<T: APIServiceProtocol>: View {
         recorder.startRecording()
         speechService.startListening()
         lumen.reset()
+        // ── FIX: set orbState to .listening immediately so the orb pulses with voice ──
+        // Previously lumen.reset() left orbState = .idle and nothing set it to .listening
+        // until "hey lumen" fired. The orb breathed (idle sin animation) but never reacted
+        // to the speaker's voice amplitude. Setting .listening here enables the amplitude-
+        // driven OrbValues.listening case from the moment recording begins.
+        lumen.orbState = .listening
         elapsedSeconds = 0
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             elapsedSeconds += 1
@@ -356,6 +383,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
         speechService.stopListening()
         recordingTimer?.invalidate()
         recordingTimer = nil
+        lumen.orbState = .idle
     }
 
     func addAttendee() {

@@ -52,6 +52,7 @@ class SpeechRecognizerService: ObservableObject {
     func stopListening() {
         guard isListening else { return }
         audioEngine.stop()
+        // FIX: always remove tap unconditionally — safe even if no tap is installed
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         recognitionRequest = nil
@@ -64,11 +65,23 @@ class SpeechRecognizerService: ObservableObject {
     // MARK: - Internal
 
     private func beginRecording() throws {
-        // Tear down any running session
+        // ── FIX: Tear down unconditionally ───────────────────────────────────────
+        // Previously: removeTap was gated on `audioEngine.isRunning`.
+        // BUG: On a silence-timeout or isFinal restart the system has already stopped
+        // the engine before this callback fires — isRunning is FALSE — so removeTap
+        // was SKIPPED. The stale tap remained installed. The next installTap call then
+        // either crashed (AVAudioEngine raises an exception for duplicate taps on the
+        // same bus) or silently replaced the buffer callback with a new closure that
+        // held a reference to the old (now-nil) recognitionRequest, so audio buffers
+        // were dropped and audioLevel stopped updating.
+        //
+        // removeTap(onBus:) is documented to be a no-op when no tap is installed, so
+        // calling it unconditionally is always safe.
         if audioEngine.isRunning {
             audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
         }
+        audioEngine.inputNode.removeTap(onBus: 0)   // ← UNCONDITIONAL — the critical fix
+
         recognitionTask?.cancel()
         recognitionTask = nil
         recognitionRequest = nil
@@ -119,10 +132,11 @@ class SpeechRecognizerService: ObservableObject {
                     }
                 } else {
                     DispatchQueue.main.async {
+                        // Engine may already be stopped; removeTap unconditionally (safe no-op)
                         if self.audioEngine.isRunning {
                             self.audioEngine.stop()
-                            self.audioEngine.inputNode.removeTap(onBus: 0)
                         }
+                        self.audioEngine.inputNode.removeTap(onBus: 0)
                         self.recognitionRequest = nil
                         self.recognitionTask = nil
                         self.isListening = false
@@ -139,6 +153,7 @@ class SpeechRecognizerService: ObservableObject {
 
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
+        // ── FIX: tap is now guaranteed to be removed above, so this install is always clean ──
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
             self?.recognitionRequest?.append(buffer)
             // Calculate RMS amplitude from raw PCM samples
@@ -150,6 +165,7 @@ class SpeechRecognizerService: ObservableObject {
             rms = sqrt(rms / Float(frameCount))
             // Normalize: speech typically peaks around 0.05–0.3 RMS — scale to 0–1
             let normalized = min(1.0, rms * 8.0)
+            // audioLevel must be set on main thread since it's @Published and observed by UI
             DispatchQueue.main.async { self?.audioLevel = normalized }
         }
 
