@@ -74,8 +74,8 @@ class LUMENService: ObservableObject {
         if captureNextSentence {
             questionBuffer += " " + newText
             let trimmed = questionBuffer.trimmingCharacters(in: .whitespaces)
-            // Collect until we have a meaningful sentence (8+ chars of content)
-            if trimmed.count > 8 {
+            // Collect until we have a meaningful question (3+ chars — even short commands work)
+            if trimmed.count > 3 {
                 pendingQuestion = trimmed
                 captureNextSentence = false
                 questionBuffer = ""
@@ -84,26 +84,46 @@ class LUMENService: ObservableObject {
             return
         }
 
-        // Detect "hey lumen" in the new words using a sliding 2-word window
-        // This catches the phrase even if split across recognition chunks
-        let windowWords = newWords.map { $0.lowercased()
-            .trimmingCharacters(in: .punctuationCharacters) }
-        for i in 0..<windowWords.count {
-            let twoWord = i + 1 < windowWords.count
-                ? windowWords[i] + " " + windowWords[i + 1]
-                : windowWords[i]
-            if twoWord == triggerPhrase || windowWords[i] == triggerPhrase {
-                captureNextSentence = true
-                triggerDetectedAt = Date()
-                questionBuffer = ""
-                DispatchQueue.main.async {
-                    self.orbState = .triggered
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        self.orbState = .listening
-                    }
+        // Detect "hey lumen" — three strategies to handle all speech recognition variations:
+        // 1. newText contains the phrase as a substring (catches "hey lumen." with punctuation)
+        // 2. Sliding 2-word window on cleaned words (catches cross-chunk splits)
+        // 3. Single word equals the phrase (shouldn't happen but safety net)
+        let triggerFound: Bool
+        let cleanedText = newText.trimmingCharacters(in: .punctuationCharacters)
+        if cleanedText.contains(triggerPhrase) {
+            triggerFound = true
+        } else {
+            let windowWords = newWords.map { $0.lowercased()
+                .trimmingCharacters(in: .punctuationCharacters) }
+            var found = false
+            for i in 0..<windowWords.count {
+                let single = windowWords[i]
+                let pair = i + 1 < windowWords.count ? single + " " + windowWords[i + 1] : single
+                if pair == triggerPhrase || single == triggerPhrase {
+                    found = true; break
                 }
-                return
             }
+            triggerFound = found
+        }
+
+        if triggerFound {
+            captureNextSentence = true
+            triggerDetectedAt = Date()
+            questionBuffer = ""
+            // Strip the trigger phrase itself from what we capture next
+            let afterTrigger = cleanedText
+                .components(separatedBy: triggerPhrase).last?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !afterTrigger.isEmpty {
+                questionBuffer = afterTrigger
+            }
+            DispatchQueue.main.async {
+                self.orbState = .triggered
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    self.orbState = .listening
+                }
+            }
+            return
         }
     }
     

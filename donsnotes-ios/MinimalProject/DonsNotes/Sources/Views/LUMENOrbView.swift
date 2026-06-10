@@ -10,369 +10,280 @@ enum LUMENOrbState {
 }
 
 // MARK: - LUMEN Orb View
+// Owns a direct @ObservedObject ref to AudioRecorder so it re-renders on every audioLevel tick.
+// Uses TimelineView for smooth per-frame time-based animation (no Timer, no withAnimation fights).
 struct LUMENOrbView: View {
     let state: LUMENOrbState
-    let amplitude: Float      // 0.0 - 1.0 from AudioRecorder.audioLevel
+    @ObservedObject var recorder: AudioRecorder   // direct subscription — re-renders at 20fps
     var size: CGFloat = 180
 
-    // ── Idle breath ──────────────────────────────────────────────────────────
-    @State private var idlePulse: CGFloat = 1.0
-    @State private var idleGlow: Double = 0.3
-
-    // ── Ring opacities / scales ───────────────────────────────────────────────
-    @State private var ring1Scale: CGFloat = 1.0
-    @State private var ring2Scale: CGFloat = 1.0
-    @State private var ring3Scale: CGFloat = 1.0
-    @State private var ring1Opacity: Double = 0.4
-    @State private var ring2Opacity: Double = 0.2
-    @State private var ring3Opacity: Double = 0.10
-
-    // ── Responding arc ────────────────────────────────────────────────────────
-    @State private var arcAngle: Double = 0          // driven by Timer
-    @State private var arcRunning: Bool = false
-    @State private var arcTimer: Timer? = nil
-
-    // ── Trigger flash ─────────────────────────────────────────────────────────
+    // Trigger flash — the one thing that still needs a brief imperative animation
     @State private var triggerFlash: Double = 0
-
-    // ── Idle breath timer ─────────────────────────────────────────────────────
-    @State private var breathTimer: Timer? = nil
-    @State private var breathExpanded: Bool = false
+    @State private var triggerScale: CGFloat = 1.0
 
     private var coreSize: CGFloat { size * 0.38 }
-    private var ampBoost: CGFloat { CGFloat(amplitude) * size * 0.25 }
 
     var body: some View {
+        TimelineView(.animation) { timeline in
+            let t   = timeline.date.timeIntervalSinceReferenceDate
+            let amp = CGFloat(recorder.audioLevel)   // live — AudioRecorder is @ObservedObject
+
+            canvas(t: t, amp: amp)
+        }
+        .onChange(of: state) { _, newState in
+            guard newState == .triggered else { return }
+            triggerFlash = 0.90
+            triggerScale = 1.18
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.easeOut(duration: 0.55)) {
+                    triggerFlash = 0
+                    triggerScale = 1.0
+                }
+            }
+        }
+        .frame(width: size * 1.8, height: size * 1.8)
+    }
+
+    // Extracted so TimelineView body is clean
+    @ViewBuilder
+    private func canvas(t: Double, amp: CGFloat) -> some View {
+        // ── Shared math ───────────────────────────────────────────────────
+        let breath      = sin(t * 0.75)                        // ~8.4s full cycle
+        let breathScale = 1.0 + breath * 0.06
+        let breathGlow  = 0.28 + breath * 0.14
+        let arcDeg      = (t * 180.0).truncatingRemainder(dividingBy: 360)
+        let arcDeg2     = (360 - t * 120.0).truncatingRemainder(dividingBy: 360)
+
+        // ── State-resolved values ─────────────────────────────────────────
+        let coreScale:  CGFloat
+        let glowOp:     Double
+        let r1Op:       Double
+        let r2Op:       Double
+        let r3Op:       Double
+        let r1Scale:    CGFloat
+        let r2Scale:    CGFloat
+        let r3Scale:    CGFloat
+        let ampBoost:   CGFloat
+
+        switch state {
+        case .idle:
+            coreScale = breathScale
+            glowOp    = breathGlow
+            r1Op      = 0.38 + breath * 0.16
+            r2Op      = 0.18 + breath * 0.10
+            r3Op      = 0.08 + breath * 0.06
+            r1Scale   = 1.0 + sin(t * 1.1) * 0.03
+            r2Scale   = 1.0 + sin(t * 0.85 + 1.0) * 0.025
+            r3Scale   = 1.0 + sin(t * 0.65 + 2.0) * 0.018
+            ampBoost  = 0
+
+        case .listening:
+            coreScale = 1.0 + amp * 0.22
+            glowOp    = 0.45 + Double(amp) * 0.55
+            r1Op      = 0.50 + Double(amp) * 0.50
+            r2Op      = 0.22 + Double(amp) * 0.38
+            r3Op      = 0.10 + Double(amp) * 0.20
+            // Rings ripple to voice — fast sine adds organic flutter
+            r1Scale   = 1.0 + amp * 0.14 + CGFloat(sin(t * 8.0)) * amp * 0.04
+            r2Scale   = 1.0 + amp * 0.09 + CGFloat(sin(t * 6.5 + 0.5)) * amp * 0.03
+            r3Scale   = 1.0 + amp * 0.05 + CGFloat(sin(t * 5.0 + 1.2)) * amp * 0.02
+            ampBoost  = amp * size * 0.28
+
+        case .triggered:
+            coreScale = triggerScale
+            glowOp    = 0.95
+            r1Op      = 1.0; r2Op = 0.72; r3Op = 0.42
+            r1Scale   = 1.10; r2Scale = 1.06; r3Scale = 1.03
+            ampBoost  = 0
+
+        case .responding:
+            let pulse = CGFloat(1.0 + sin(t * 2.5) * 0.04)
+            coreScale = pulse
+            glowOp    = 0.70 + sin(t * 1.8) * 0.12
+            r1Op      = 0.72 + sin(t * 2.1) * 0.18
+            r2Op      = 0.38 + sin(t * 1.6) * 0.12
+            r3Op      = 0.18 + sin(t * 1.2) * 0.07
+            r1Scale   = 1.0 + CGFloat(sin(t * 1.1)) * 0.03
+            r2Scale   = 1.0 + CGFloat(sin(t * 0.9 + 1.0)) * 0.025
+            r3Scale   = 1.0 + CGFloat(sin(t * 0.7 + 2.0)) * 0.018
+            ampBoost  = 0
+
+        case .dormant:
+            coreScale = 0.95
+            glowOp    = 0.12
+            r1Op      = 0.10; r2Op = 0.06; r3Op = 0.03
+            r1Scale   = 1.0;  r2Scale = 1.0;  r3Scale = 1.0
+            ampBoost  = 0
+        }
+
         ZStack {
-            // ── Outer ambient glow ─────────────────────────────────────────
+            // ── Outer ambient glow ───────────────────────────────────────
             Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [
-                            LM.Colors.cyan.opacity(glowForState * 0.6),
-                            .clear
-                        ],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: size * 0.9
-                    )
-                )
+                .fill(RadialGradient(
+                    colors: [LM.Colors.cyan.opacity(glowOp * 0.55), .clear],
+                    center: .center, startRadius: 0, endRadius: size * 0.9
+                ))
                 .frame(width: size * 1.8, height: size * 1.8)
-                .animation(.easeInOut(duration: 0.4), value: glowForState)
 
-            // ── Ring 3 (outermost) ─────────────────────────────────────────
+            // ── Ring 3 (outermost) ───────────────────────────────────────
             Circle()
-                .stroke(LM.Colors.cyan.opacity(ring3Opacity), lineWidth: 1)
-                .frame(
-                    width:  size + 60 + ampBoost * 0.6,
-                    height: size + 60 + ampBoost * 0.6
-                )
-                .scaleEffect(ring3Scale)
-                .animation(.easeInOut(duration: 0.3), value: ring3Opacity)
-                .animation(.easeInOut(duration: 0.3), value: ring3Scale)
-                .animation(.easeOut(duration: 0.08), value: ampBoost)
+                .stroke(LM.Colors.cyan.opacity(r3Op), lineWidth: 1)
+                .frame(width: size + 60 + ampBoost * 0.55,
+                       height: size + 60 + ampBoost * 0.55)
+                .scaleEffect(r3Scale)
 
-            // ── Ring 2 (mid) ───────────────────────────────────────────────
+            // HUD tick marks at 4 cardinal points on ring 3
+            ForEach([0.0, 90.0, 180.0, 270.0], id: \.self) { angle in
+                Rectangle()
+                    .fill(LM.Colors.cyan.opacity(r3Op * 1.6))
+                    .frame(width: 2, height: 7)
+                    .offset(y: -(size * 0.5 + 60 + ampBoost * 0.27 + 3.5))
+                    .rotationEffect(.degrees(angle))
+                    .scaleEffect(r3Scale)
+            }
+
+            // ── Ring 2 (mid) ─────────────────────────────────────────────
             Circle()
-                .stroke(LM.Colors.cyan.opacity(ring2Opacity), lineWidth: 1.5)
-                .frame(
-                    width:  size + 30 + ampBoost * 0.4,
-                    height: size + 30 + ampBoost * 0.4
-                )
-                .scaleEffect(ring2Scale)
-                .animation(.easeInOut(duration: 0.3), value: ring2Opacity)
-                .animation(.easeInOut(duration: 0.3), value: ring2Scale)
-                .animation(.easeOut(duration: 0.08), value: ampBoost)
+                .stroke(LM.Colors.cyan.opacity(r2Op), lineWidth: 1.5)
+                .frame(width: size + 30 + ampBoost * 0.38,
+                       height: size + 30 + ampBoost * 0.38)
+                .scaleEffect(r2Scale)
 
-            // ── Ring 1 (inner glow ring) ───────────────────────────────────
+            // ── Ring 1 (inner) ───────────────────────────────────────────
             Circle()
                 .stroke(
                     LinearGradient(
-                        colors: [
-                            LM.Colors.cyan.opacity(ring1Opacity),
-                            LM.Colors.blue.opacity(ring1Opacity * 0.5)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+                        colors: [LM.Colors.cyan.opacity(r1Op),
+                                 LM.Colors.blue.opacity(r1Op * 0.5)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
                     ),
                     lineWidth: 2
                 )
-                .frame(
-                    width:  size + ampBoost * 0.3,
-                    height: size + ampBoost * 0.3
-                )
-                .scaleEffect(ring1Scale)
-                .animation(.easeInOut(duration: 0.3), value: ring1Opacity)
-                .animation(.easeInOut(duration: 0.3), value: ring1Scale)
-                .animation(.easeOut(duration: 0.08), value: ampBoost)
+                .frame(width: size + ampBoost * 0.28,
+                       height: size + ampBoost * 0.28)
+                .scaleEffect(r1Scale)
 
-            // ── Responding arcs ────────────────────────────────────────────
+            // ── Extra inner glow ring when voice is loud ─────────────────
+            if state == .listening && amp > 0.08 {
+                Circle()
+                    .stroke(LM.Colors.cyanBright.opacity(Double(amp) * 0.85), lineWidth: 3)
+                    .frame(width: size * 0.70, height: size * 0.70)
+                    .blur(radius: 5)
+                    .scaleEffect(r1Scale)
+            }
+
+            // ── Responding arcs ──────────────────────────────────────────
             if state == .responding {
                 Circle()
                     .trim(from: 0.0, to: 0.35)
-                    .stroke(
-                        LM.Colors.cyan,
-                        style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                    )
+                    .stroke(LM.Colors.cyan,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .frame(width: size + 14, height: size + 14)
-                    .rotationEffect(.degrees(arcAngle))
+                    .rotationEffect(.degrees(arcDeg - 90))
 
                 Circle()
                     .trim(from: 0.55, to: 0.75)
-                    .stroke(
-                        LM.Colors.cyanBright.opacity(0.6),
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                    )
-                    .frame(width: size + 22, height: size + 22)
-                    .rotationEffect(.degrees(-arcAngle * 0.7))
+                    .stroke(LM.Colors.cyanBright.opacity(0.65),
+                            style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .frame(width: size + 24, height: size + 24)
+                    .rotationEffect(.degrees(arcDeg2 - 90))
             }
 
-            // ── Core orb ──────────────────────────────────────────────────
+            // ── Core orb ─────────────────────────────────────────────────
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                LM.Colors.cyanBright.opacity(0.9),
-                                LM.Colors.cyan.opacity(0.6),
-                                LM.Colors.blue.opacity(0.4),
-                                LM.Colors.deep
-                            ],
-                            center: UnitPoint(x: 0.35, y: 0.3),
-                            startRadius: 0,
-                            endRadius: coreSize * 0.9
-                        )
-                    )
-                    .frame(
-                        width:  coreSize + ampBoost * 0.2,
-                        height: coreSize + ampBoost * 0.2
-                    )
-                    .animation(.easeOut(duration: 0.08), value: ampBoost)
+                    .fill(RadialGradient(
+                        colors: [
+                            LM.Colors.cyanBright.opacity(0.95),
+                            LM.Colors.cyan.opacity(0.65),
+                            LM.Colors.blue.opacity(0.40),
+                            LM.Colors.deep
+                        ],
+                        center: UnitPoint(x: 0.35, y: 0.3),
+                        startRadius: 0,
+                        endRadius: coreSize * 0.9
+                    ))
+                    .frame(width: coreSize + ampBoost * 0.2,
+                           height: coreSize + ampBoost * 0.2)
 
+                // Specular highlight
                 Ellipse()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color.white.opacity(0.7), Color.white.opacity(0.0)],
-                            center: .center,
-                            startRadius: 0,
-                            endRadius: coreSize * 0.3
-                        )
-                    )
+                    .fill(RadialGradient(
+                        colors: [Color.white.opacity(0.78), .clear],
+                        center: .center, startRadius: 0,
+                        endRadius: coreSize * 0.3
+                    ))
                     .frame(width: coreSize * 0.45, height: coreSize * 0.3)
-                    .offset(x: -coreSize * 0.15, y: -coreSize * 0.2)
+                    .offset(x: -coreSize * 0.15, y: -coreSize * 0.20)
 
                 Text("LUMEN")
                     .font(LM.Fonts.mono(coreSize * 0.13, weight: .bold))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(.white.opacity(0.55))
                     .tracking(2)
             }
             .scaleEffect(coreScale)
-            .animation(.easeOut(duration: 0.12), value: coreScale)
 
-            // ── Trigger flash ──────────────────────────────────────────────
+            // ── Trigger flash ────────────────────────────────────────────
             if triggerFlash > 0 {
                 Circle()
                     .fill(Color.white.opacity(triggerFlash))
                     .frame(width: size * 1.5, height: size * 1.5)
-                    .animation(.easeOut(duration: 0.3), value: triggerFlash)
             }
         }
-        .frame(width: size * 1.8, height: size * 1.8)
-        .onAppear {
-            applyState(state)
-        }
-        .onChange(of: state) { _, newState in
-            applyState(newState)
-        }
-        .onChange(of: amplitude) { _, newAmp in
-            guard state == .listening else { return }
-            // Ring scales pulse with voice amplitude
-            let boost = CGFloat(newAmp)
-            ring1Scale = 1.0 + boost * 0.12
-            ring2Scale = 1.0 + boost * 0.07
-            ring3Scale = 1.0 + boost * 0.04
-            ring1Opacity = 0.55 + Double(boost) * 0.45
-            ring2Opacity = 0.25 + Double(boost) * 0.35
-        }
-    }
-
-    // ── Computed helpers ───────────────────────────────────────────────────
-    private var glowForState: Double {
-        switch state {
-        case .idle:      return idleGlow
-        case .listening: return 0.55 + Double(amplitude) * 0.45
-        case .triggered: return 0.95
-        case .responding: return 0.80
-        case .dormant:   return 0.12
-        }
-    }
-
-    private var coreScale: CGFloat {
-        switch state {
-        case .idle:      return idlePulse
-        case .listening: return 1.0 + CGFloat(amplitude) * 0.18
-        case .triggered: return 1.15
-        case .responding: return 1.05
-        case .dormant:   return 0.95
-        }
-    }
-
-    // ── State machine ──────────────────────────────────────────────────────
-    private func applyState(_ newState: LUMENOrbState) {
-        stopBreathTimer()
-        stopArcTimer()
-
-        switch newState {
-        case .idle:
-            ring1Opacity = 0.40; ring2Opacity = 0.20; ring3Opacity = 0.10
-            ring1Scale   = 1.0;  ring2Scale   = 1.0;  ring3Scale   = 1.0
-            startBreathTimer()
-
-        case .listening:
-            idlePulse    = 1.0
-            idleGlow     = 0.55
-            ring1Opacity = 0.65; ring2Opacity = 0.35; ring3Opacity = 0.18
-            ring1Scale   = 1.0;  ring2Scale   = 1.0;  ring3Scale   = 1.0
-
-        case .triggered:
-            triggerFlash = 0.85
-            idlePulse    = 1.15
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                self.triggerFlash = 0
-                self.idlePulse    = 1.0
-                self.idleGlow     = 0.90
-                self.ring1Opacity = 1.0
-                self.ring2Opacity = 0.60
-            }
-
-        case .responding:
-            idlePulse    = 1.0
-            idleGlow     = 0.80
-            ring1Opacity = 0.80; ring2Opacity = 0.45; ring3Opacity = 0.20
-            ring1Scale   = 1.0;  ring2Scale   = 1.0;  ring3Scale   = 1.0
-            arcAngle     = 0
-            startArcTimer()
-
-        case .dormant:
-            idlePulse    = 1.0
-            idleGlow     = 0.12
-            ring1Opacity = 0.12; ring2Opacity = 0.07; ring3Opacity = 0.03
-            ring1Scale   = 1.0;  ring2Scale   = 1.0;  ring3Scale   = 1.0
-        }
-    }
-
-    // ── Breath timer (idle) ────────────────────────────────────────────────
-    private func startBreathTimer() {
-        breathExpanded = false
-        breathTimer = Timer.scheduledTimer(withTimeInterval: 2.4, repeats: true) { _ in
-            breathExpanded.toggle()
-            withAnimation(.easeInOut(duration: 2.4)) {
-                if breathExpanded {
-                    idlePulse    = 1.06
-                    idleGlow     = 0.40
-                    ring1Scale   = 1.04
-                    ring2Scale   = 1.03
-                    ring3Scale   = 1.02
-                    ring1Opacity = 0.50
-                    ring2Opacity = 0.28
-                    ring3Opacity = 0.14
-                } else {
-                    idlePulse    = 1.0
-                    idleGlow     = 0.28
-                    ring1Scale   = 1.0
-                    ring2Scale   = 1.0
-                    ring3Scale   = 1.0
-                    ring1Opacity = 0.35
-                    ring2Opacity = 0.18
-                    ring3Opacity = 0.08
-                }
-            }
-        }
-        breathTimer?.fire()
-    }
-
-    private func stopBreathTimer() {
-        breathTimer?.invalidate()
-        breathTimer = nil
-    }
-
-    // ── Arc rotation timer (responding) ───────────────────────────────────
-    private func startArcTimer() {
-        // Tick at 60fps, rotate 3°/tick = full rotation in ~2 seconds
-        arcTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
-            arcAngle = (arcAngle + 3.0).truncatingRemainder(dividingBy: 360.0)
-        }
-    }
-
-    private func stopArcTimer() {
-        arcTimer?.invalidate()
-        arcTimer = nil
-        arcAngle = 0
     }
 }
 
-// MARK: - LUMEN Wave Bar (waveform visualizer)
+// MARK: - LUMEN Wave Bar
+// Owns nothing heavy — TimelineView + parent's amp passed as let (parent re-renders at 20fps
+// because it owns @ObservedObject AudioRecorder, so this gets fresh amp each frame).
 struct LUMENWaveBar: View {
     let amplitude: Float
     let index: Int
     let totalBars: Int
 
-    @State private var height: CGFloat = 4
-
-    private var phaseOffset: Double {
-        Double(index) / Double(totalBars) * .pi * 2
-    }
-
-    private var targetHeight: CGFloat {
-        let base: CGFloat = 50
-        let minH: CGFloat = 4
-        if amplitude < 0.01 {
-            // Gentle idle ripple using sine wave
-            let idle = 0.12 + 0.08 * sin(phaseOffset * 2)
-            return minH + base * CGFloat(idle)
-        }
-        let wave = 0.3 + 0.7 * abs(sin(phaseOffset + Double(amplitude) * 3))
-        return minH + base * CGFloat(amplitude) * CGFloat(wave)
-    }
-
     var body: some View {
-        RoundedRectangle(cornerRadius: 3)
-            .fill(
-                LinearGradient(
-                    colors: [LM.Colors.cyanBright, LM.Colors.cyan.opacity(0.5)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .frame(width: 3, height: height)
-            .onAppear {
-                // Start with a gentle idle animation immediately
-                withAnimation(
-                    .easeInOut(duration: 0.6 + Double(index) * 0.02)
-                    .repeatForever(autoreverses: true)
-                ) {
-                    height = targetHeight
-                }
-            }
-            .onChange(of: amplitude) { _, _ in
-                withAnimation(.easeOut(duration: 0.08)) {
-                    height = targetHeight
-                }
-            }
+        TimelineView(.animation) { timeline in
+            let t     = timeline.date.timeIntervalSinceReferenceDate
+            let amp   = CGFloat(amplitude)
+            let phase = Double(index) / Double(totalBars) * .pi * 2.0
+
+            // Idle ripple at zero sound
+            let idleH: CGFloat  = 4 + 10 * CGFloat(0.5 + 0.5 * sin(t * 3.5 + phase))
+            // Active height: amplitude × per-bar wave variation
+            let waveVar         = 0.20 + 0.80 * abs(sin(t * 7.0 + phase))
+            let activeH: CGFloat = 4 + 54 * amp * CGFloat(waveVar)
+
+            let height = amp < 0.04 ? idleH : max(idleH, activeH)
+
+            RoundedRectangle(cornerRadius: 3)
+                .fill(LinearGradient(
+                    colors: [
+                        LM.Colors.cyanBright.opacity(0.88 + Double(amp) * 0.12),
+                        LM.Colors.cyan.opacity(0.42)
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                ))
+                .frame(width: 3, height: height)
+        }
     }
 }
 
-// MARK: - LUMEN Waveform Row (32 bars)
+// MARK: - LUMEN Waveform Row
+// Takes AudioRecorder directly so it re-renders on every audioLevel tick.
 struct LUMENWaveformView: View {
-    let amplitude: Float
+    @ObservedObject var recorder: AudioRecorder
 
     var body: some View {
         HStack(spacing: 3) {
             ForEach(0..<32, id: \.self) { i in
-                LUMENWaveBar(amplitude: amplitude, index: i, totalBars: 32)
+                LUMENWaveBar(
+                    amplitude: recorder.audioLevel,
+                    index: i,
+                    totalBars: 32
+                )
             }
         }
-        .frame(height: 54)
+        .frame(height: 60)
     }
 }
 
@@ -385,7 +296,6 @@ struct LUMENResponseOverlay: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header
             HStack {
                 Image(systemName: "sparkles")
                     .font(LM.Fonts.text(13, weight: .bold))
@@ -404,7 +314,6 @@ struct LUMENResponseOverlay: View {
 
             ScanLineDivider()
 
-            // Question
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "mic.fill")
                     .font(LM.Fonts.text(11))
@@ -416,7 +325,6 @@ struct LUMENResponseOverlay: View {
                     .italic()
             }
 
-            // Answer
             HStack(alignment: .top, spacing: 8) {
                 ZStack {
                     Circle()
@@ -436,10 +344,8 @@ struct LUMENResponseOverlay: View {
         .padding(LM.Space.md)
         .background(LM.Colors.surface)
         .cornerRadius(LM.Radius.lg)
-        .overlay(
-            RoundedRectangle(cornerRadius: LM.Radius.lg)
-                .stroke(LM.Colors.borderCyan, lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: LM.Radius.lg)
+            .stroke(LM.Colors.borderCyan, lineWidth: 1))
         .shadow(color: LM.Colors.cyan.opacity(0.2), radius: 20, x: 0, y: 8)
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .padding(.horizontal, LM.Space.md)
