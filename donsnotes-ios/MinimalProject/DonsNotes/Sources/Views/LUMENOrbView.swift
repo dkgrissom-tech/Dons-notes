@@ -4,75 +4,20 @@ import SwiftUI
 enum LUMENOrbState {
     case idle
     case listening
-    case triggered      // brief flash when "Hey Lumen" fires
-    case responding     // thinking / speaking
+    case triggered
+    case responding
     case dormant
 }
 
-// MARK: - Orb computed values (plain struct, NOT a @ViewBuilder)
-// All per-frame math lives here so the SwiftUI body stays declarative.
-private struct Ripple: Identifiable {
-    let id: Int
-    let scale: CGFloat
-    let opacity: Double
-}
-
-private struct OrbValues {
-    let scale: CGFloat            // core orb scale (base pulse * amp boost)
-    let color: Color              // state-driven core/ring color
-    let glow: Double              // ambient glow opacity 0...1
-    let midRingOpacity: Double
-    let ripples: [Ripple]         // 3 ripples, fully computed (scale + opacity)
-
-    init(state: LUMENOrbState, amp: CGFloat, t: Double, pulse: Bool) {
-        // Base pulse range per state (matches Jarvis: idle 1.0–1.05, active 1.0–1.12)
-        let activeRange: CGFloat
-        switch state {
-        case .idle, .dormant:                 activeRange = 0.05
-        case .listening, .triggered, .responding: activeRange = 0.12
-        }
-        // withAnimation drives `pulse` between false/true; map to the scale range.
-        let basePulse = 1.0 + (pulse ? activeRange : 0.0)
-
-        // audioLevel boost rides on top of the base pulse (only when meaningful)
-        let ampBoost: CGFloat = amp > 0.05 ? (amp * 0.3) : 0.0
-        self.scale = basePulse + ampBoost
-
-        // Color by state (matches Jarvis palette)
-        switch state {
-        case .idle:       self.color = LM.Colors.cyanDim
-        case .listening:  self.color = LM.Colors.green
-        case .triggered:  self.color = LM.Colors.cyanBright
-        case .responding: self.color = LM.Colors.purple
-        case .dormant:    self.color = LM.Colors.cyan.opacity(0.25)
-        }
-
-        // Ambient glow strength
-        switch state {
-        case .idle:       self.glow = 0.30 + Double(amp) * 0.30
-        case .listening:  self.glow = 0.55 + Double(amp) * 0.45
-        case .triggered:  self.glow = 0.95
-        case .responding: self.glow = 0.70
-        case .dormant:    self.glow = 0.12
-        }
-
-        self.midRingOpacity = 0.35 + self.glow * 0.4
-
-        // 3 expanding ripple rings — staggered phase offsets, period 2s (matches CSS ripple).
-        // Fully compute scale (0.8 → 2.5) and opacity (0.8 → 0) here so the view does no math.
-        let period = 2.0
-        let delays = [0.0, 0.6, 1.2]   // staggered like .ripple:nth-child(2)/(3)
-        self.ripples = delays.enumerated().map { idx, d in
-            var phase = ((t - d).truncatingRemainder(dividingBy: period)) / period
-            if phase < 0 { phase += 1.0 }
-            let s = 0.8 + CGFloat(phase) * (2.5 - 0.8)
-            let o = (1.0 - phase) * 0.8
-            return Ripple(id: idx, scale: s, opacity: o)
-        }
-    }
-}
-
-// MARK: - LUMEN Orb View
+// MARK: - LUMENOrbView
+// Matches the Jarvis web app look exactly:
+//   - Solid filled dark sphere (deep blue/navy gradient) with mic icon — NOT just rings
+//   - Cyan ring border around the sphere edge
+//   - Soft radial glow behind the sphere
+//   - 3 expanding ripple rings (staggered, CSS-matched)
+//   - State-based color: idle=cyan, listening=green, responding=purple, triggered=white
+//   - Pulse scale: idle 1.0↔1.05 (slow), listening/responding 1.0↔1.12 (fast)
+//   - audioLevel boosts scale on top of pulse
 struct LUMENOrbView: View {
     let state: LUMENOrbState
     @ObservedObject var speechService: SpeechRecognizerService
@@ -80,142 +25,198 @@ struct LUMENOrbView: View {
 
     @State private var pulse: Bool = false
 
-    private var coreSize: CGFloat { size * 0.42 }
+    // State color
+    private var stateColor: Color {
+        switch state {
+        case .idle:       return Color(red: 0.22, green: 0.74, blue: 1.00)  // cyan
+        case .listening:  return Color(red: 0.10, green: 0.95, blue: 0.60)  // green
+        case .triggered:  return Color.white
+        case .responding: return Color(red: 0.65, green: 0.35, blue: 1.00)  // purple
+        case .dormant:    return Color(red: 0.22, green: 0.74, blue: 1.00).opacity(0.3)
+        }
+    }
+
+    // Pulse speed
+    private var pulseDuration: Double {
+        switch state {
+        case .idle, .dormant: return 1.5   // 3s round trip = pulse-slow
+        case .listening:      return 0.4   // 0.8s = pulse-fast
+        case .triggered:      return 0.2
+        case .responding:     return 0.25  // 0.5s = speaking
+        }
+    }
+
+    // Active scale range
+    private var pulseRange: CGFloat {
+        switch state {
+        case .idle, .dormant: return 0.05   // 1.0 → 1.05
+        default:              return 0.12   // 1.0 → 1.12
+        }
+    }
 
     var body: some View {
-        // TimelineView(.animation) redraws every frame so the ripple phase (driven by the
-        // timeline date) and the latest audioLevel both stay current with no timer fight.
-        // `pulse` is animated separately by withAnimation(.repeatForever) and toggles the
-        // base scale between the idle/active range.
         TimelineView(.animation) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let amp = CGFloat(speechService.audioLevel)
-            let v = OrbValues(state: state, amp: amp, t: t, pulse: pulse)
-            canvas(v: v, t: t)
-        }
-        .frame(width: size * 1.8, height: size * 1.8)
-        .onAppear { startPulse() }
-        .onChange(of: state) { _, _ in startPulse() }
-    }
 
-    // Animate the base breathing pulse. Re-arm on appear and on state change so the
-    // duration matches the active state (faster when listening/speaking).
-    private func startPulse() {
-        pulse = false
-        let duration: Double
-        switch state {
-        case .idle, .dormant: duration = 1.5    // pulse-slow (3s round trip)
-        case .listening:      duration = 0.4    // pulse-fast 0.8s round trip
-        case .triggered:      duration = 0.4
-        case .responding:     duration = 0.25   // speaking 0.5s round trip
-        }
-        withAnimation(.easeInOut(duration: duration).repeatForever(autoreverses: true)) {
-            pulse = true
-        }
-    }
+            // Final orb scale = base pulse + voice amplitude boost
+            let baseScale: CGFloat = 1.0 + (pulse ? pulseRange : 0)
+            let ampBoost: CGFloat  = amp > 0.05 ? (amp * 0.25) : 0
+            let orbScale           = baseScale + ampBoost
 
-    @ViewBuilder
-    private func canvas(v: OrbValues, t: Double) -> some View {
-        ZStack {
-            // Outer ambient glow
-            Circle()
-                .fill(RadialGradient(
-                    colors: [v.color.opacity(v.glow * 0.55), .clear],
-                    center: .center, startRadius: 0, endRadius: size * 0.9
-                ))
-                .frame(width: size * 1.8, height: size * 1.8)
+            // Glow intensity driven by amplitude
+            let glowOpacity = 0.45 + Double(amp) * 0.35
 
-            // 3 expanding ripple rings (CSS @keyframes ripple port).
-            ForEach(v.ripples) { r in
-                Circle()
-                    .stroke(v.color.opacity(r.opacity), lineWidth: 1)
-                    .frame(width: size, height: size)
-                    .scaleEffect(r.scale)
-            }
-
-            // Mid structural ring
-            Circle()
-                .stroke(v.color.opacity(v.midRingOpacity), lineWidth: 1.5)
-                .frame(width: size, height: size)
-                .scaleEffect(v.scale)
-
-            // Responding rotating arc
-            if state == .responding {
-                let arcDeg = (t * 160.0).truncatingRemainder(dividingBy: 360)
-                Circle()
-                    .trim(from: 0.0, to: 0.35)
-                    .stroke(v.color, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                    .frame(width: size + 16, height: size + 16)
-                    .rotationEffect(.degrees(arcDeg - 90))
-            }
-
-            // Core orb
             ZStack {
+                // ── Outer ambient radial glow (behind everything) ─────────────────
                 Circle()
                     .fill(RadialGradient(
-                        colors: [
-                            v.color.opacity(0.95),
-                            v.color.opacity(0.60),
-                            LM.Colors.blue.opacity(0.35),
-                            LM.Colors.deep
-                        ],
-                        center: UnitPoint(x: 0.35, y: 0.30),
+                        colors: [stateColor.opacity(glowOpacity * 0.6), .clear],
+                        center: .center,
                         startRadius: 0,
-                        endRadius: coreSize * 0.9
+                        endRadius: size * 0.85
                     ))
-                    .frame(width: coreSize, height: coreSize)
+                    .frame(width: size * 1.7, height: size * 1.7)
 
-                // Specular highlight
-                Ellipse()
-                    .fill(RadialGradient(
-                        colors: [Color.white.opacity(0.78), .clear],
-                        center: .center, startRadius: 0, endRadius: coreSize * 0.3
-                    ))
-                    .frame(width: coreSize * 0.45, height: coreSize * 0.30)
-                    .offset(x: -coreSize * 0.15, y: -coreSize * 0.20)
+                // ── 3 expanding ripple rings (CSS ripple port) ────────────────────
+                // period=2s, delays 0/0.6/1.2s, scale 0.8→2.5, opacity 0.8→0
+                ForEach(0..<3, id: \.self) { idx in
+                    let delay  = Double(idx) * 0.6
+                    let period = 2.0
+                    var phase  = ((t - delay).truncatingRemainder(dividingBy: period)) / period
+                    if phase < 0 { phase += 1.0 }
+                    let rippleScale   = CGFloat(0.8 + phase * 1.7)   // 0.8 → 2.5
+                    let rippleOpacity = (1.0 - phase) * 0.5
 
-                Text("LUMEN")
-                    .font(LM.Fonts.mono(coreSize * 0.13, weight: .bold))
-                    .foregroundColor(.white.opacity(0.55))
-                    .tracking(2)
+                    Circle()
+                        .stroke(stateColor.opacity(rippleOpacity), lineWidth: 1)
+                        .frame(width: size, height: size)
+                        .scaleEffect(rippleScale)
+                }
+
+                // ── The solid sphere — dark navy fill + state-color rim ───────────
+                ZStack {
+                    // Dark filled body (the Jarvis "depth" look)
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.08, green: 0.13, blue: 0.22),  // lighter edge
+                                    Color(red: 0.03, green: 0.05, blue: 0.12),  // deep center
+                                ],
+                                center: UnitPoint(x: 0.38, y: 0.32),
+                                startRadius: 0,
+                                endRadius: size * 0.48
+                            )
+                        )
+                        .frame(width: size, height: size)
+
+                    // State-color rim ring (the cyan ring you see around the Jarvis orb)
+                    Circle()
+                        .stroke(
+                            LinearGradient(
+                                colors: [
+                                    stateColor.opacity(0.9),
+                                    stateColor.opacity(0.4),
+                                    stateColor.opacity(0.1),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 2
+                        )
+                        .frame(width: size, height: size)
+
+                    // Subtle specular highlight (top-left shine)
+                    Ellipse()
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.white.opacity(0.25), .clear],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: size * 0.18
+                            )
+                        )
+                        .frame(width: size * 0.38, height: size * 0.25)
+                        .offset(x: -size * 0.14, y: -size * 0.18)
+
+                    // Mic icon (matches Jarvis)
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: size * 0.22, weight: .medium))
+                        .foregroundColor(stateColor.opacity(0.85))
+                }
+                .scaleEffect(orbScale)
+                .shadow(color: stateColor.opacity(glowOpacity), radius: 20 + CGFloat(amp) * 12)
+
+                // ── Rotating arc when responding (thinking/speaking) ──────────────
+                if state == .responding || state == .triggered {
+                    let arcDeg = (t * 150).truncatingRemainder(dividingBy: 360)
+                    Circle()
+                        .trim(from: 0, to: 0.3)
+                        .stroke(stateColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                        .frame(width: size + 14, height: size + 14)
+                        .rotationEffect(.degrees(arcDeg - 90))
+                        .opacity(0.8)
+                }
+
+                // ── LUMEN label under orb ────────────────────────────────────────
+                VStack {
+                    Spacer().frame(height: size + 28)
+                    Text("LUMEN")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(stateColor.opacity(0.7))
+                        .tracking(3)
+                }
+                .frame(width: size * 1.7)
             }
-            .scaleEffect(v.scale)
-            .shadow(color: v.color.opacity(v.glow), radius: 18 + v.glow * 14)
+            .frame(width: size * 1.7, height: size * 1.7 + 28)
+        }
+        .onAppear { startPulse() }
+        .onChange(of: state) { _, _ in
+            withAnimation(.easeInOut(duration: 0.2)) { pulse = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { startPulse() }
+        }
+    }
+
+    private func startPulse() {
+        withAnimation(.easeInOut(duration: pulseDuration).repeatForever(autoreverses: true)) {
+            pulse = true
         }
     }
 }
 
-// MARK: - LUMEN Wave Bar
+// MARK: - Wave Bar
 struct LUMENWaveBar: View {
     let amplitude: Float
     let index: Int
     let totalBars: Int
 
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
+        TimelineView(.animation) { tl in
+            let t  = tl.date.timeIntervalSinceReferenceDate
             let amp = CGFloat(amplitude)
             let phase = Double(index) / Double(totalBars) * .pi * 2.0
 
-            let idleH = 4 + 10 * CGFloat(0.5 + 0.5 * sin(t * 3.5 + phase))
-            let waveVar = 0.20 + 0.80 * abs(sin(t * 7.0 + phase))
-            let activeH = 4 + 54 * amp * CGFloat(waveVar)
-            let height = amp < 0.04 ? idleH : max(idleH, activeH)
+            let idleH: CGFloat  = 4 + 10 * CGFloat(0.5 + 0.5 * sin(t * 3.5 + phase))
+            let waveVar: CGFloat = CGFloat(0.2 + 0.8 * abs(sin(t * 7.0 + phase)))
+            let activeH: CGFloat = 4 + 54 * amp * waveVar
+            let height: CGFloat  = amp < 0.04 ? idleH : max(idleH, activeH)
 
             RoundedRectangle(cornerRadius: 3)
                 .fill(LinearGradient(
                     colors: [
-                        LM.Colors.cyanBright.opacity(0.88 + Double(amp) * 0.12),
-                        LM.Colors.cyan.opacity(0.42)
+                        Color(red: 0.22, green: 0.74, blue: 1.00).opacity(0.88 + Double(amp) * 0.12),
+                        Color(red: 0.22, green: 0.74, blue: 1.00).opacity(0.40)
                     ],
-                    startPoint: .top, endPoint: .bottom
+                    startPoint: .top,
+                    endPoint: .bottom
                 ))
                 .frame(width: 3, height: height)
         }
     }
 }
 
-// MARK: - LUMEN Waveform Row
+// MARK: - Waveform Row
 struct LUMENWaveformView: View {
     @ObservedObject var speechService: SpeechRecognizerService
 
@@ -240,7 +241,6 @@ struct LUMENResponseOverlay: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "sparkles")
-                    .font(LM.Fonts.text(13, weight: .bold))
                     .foregroundColor(LM.Colors.cyan)
                 Text("LUMEN")
                     .font(LM.Fonts.mono(11, weight: .bold))
@@ -249,7 +249,6 @@ struct LUMENResponseOverlay: View {
                 Spacer()
                 Button(action: onDismiss) {
                     Image(systemName: "xmark.circle.fill")
-                        .font(LM.Fonts.text(16))
                         .foregroundColor(LM.Colors.textTertiary)
                 }
             }
@@ -258,7 +257,7 @@ struct LUMENResponseOverlay: View {
 
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "mic.fill")
-                    .font(LM.Fonts.text(11))
+                    .font(.system(size: 11))
                     .foregroundColor(LM.Colors.textTertiary)
                     .padding(.top, 2)
                 Text(question)
@@ -273,7 +272,7 @@ struct LUMENResponseOverlay: View {
                         .fill(LM.Colors.cyanGlow)
                         .frame(width: 22, height: 22)
                     Image(systemName: "sparkle")
-                        .font(LM.Fonts.text(10, weight: .bold))
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(LM.Colors.cyan)
                 }
                 .padding(.top, 1)

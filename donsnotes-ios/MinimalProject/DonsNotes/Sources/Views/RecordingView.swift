@@ -94,7 +94,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
             // Transcript observer on the stable OUTER view. The full cumulative transcript
             // is passed both as the trigger source and as the Claude context.
             .onReceive(speechService.$transcript) { transcript in
-                guard speechService.isListening else { return }
+                // No isListening guard — transcript arrives before isListening flips true
+                // and we only want to process when the recording HUD is active.
+                guard !transcript.isEmpty else { return }
                 lumen.processTranscript(transcript, fullContext: transcript)
             }
             // Push dictated attendee text into the name field as it arrives.
@@ -355,9 +357,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
     // MARK: - Actions
     func startRecording() {
-        lumen.reset()
+        lumen.reset()                       // clears word count, buffers, sets orbState=.idle
+        lumen.orbState = .listening         // override immediately AFTER reset
         speechService.startListening()
-        lumen.orbState = .listening      // set immediately so the orb is alive at once
         elapsedSeconds = 0
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             elapsedSeconds += 1
