@@ -20,6 +20,7 @@
         110000012C1000010000019A /* RealAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000136 /* RealAPIService.swift */; };
         110000012C1000010000019B /* SpeechRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000137 /* SpeechRecognizerService.swift */; };
         110000012C1000010000019C /* SubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000138 /* SubscriptionService.swift */; };
+        110000012C100001000001A4 /* ReferralService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C100001000001A5 /* ReferralService.swift */; };
         110000012C1000010000019D /* ContactPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000139 /* ContactPickerView.swift */; };
         110000012C1000010000019E /* MeetingDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000013A /* MeetingDetailView.swift */; };
         110000012C1000010000019F /* MeetingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000013B /* MeetingListView.swift */; };
@@ -48,6 +49,7 @@
         110000012C10000100000136 /* RealAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealAPIService.swift; sourceTree = "<group>"; };
         110000012C10000100000137 /* SpeechRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizerService.swift; sourceTree = "<group>"; };
         110000012C10000100000138 /* SubscriptionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionService.swift; sourceTree = "<group>"; };
+        110000012C100001000001A5 /* ReferralService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReferralService.swift; sourceTree = "<group>"; };
         110000012C10000100000139 /* ContactPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactPickerView.swift; sourceTree = "<group>"; };
         110000012C1000010000013A /* MeetingDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingDetailView.swift; sourceTree = "<group>"; };
         110000012C1000010000013B /* MeetingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingListView.swift; sourceTree = "<group>"; };
@@ -140,6 +142,7 @@
                 110000012C10000100000136 /* RealAPIService.swift */,
                 110000012C10000100000137 /* SpeechRecognizerService.swift */,
                 110000012C10000100000138 /* SubscriptionService.swift */,
+                110000012C100001000001A5 /* ReferralService.swift */,
                 AA000000100000002 /* LUMENService.swift */,
 
             );
@@ -260,6 +263,7 @@
                 110000012C1000010000019A /* RealAPIService.swift in Sources */,
                 110000012C1000010000019B /* SpeechRecognizerService.swift in Sources */,
                 110000012C1000010000019C /* SubscriptionService.swift in Sources */,
+                110000012C100001000001A4 /* ReferralService.swift in Sources */,
                 110000012C1000010000019D /* ContactPickerView.swift in Sources */,
                 110000012C1000010000019E /* MeetingDetailView.swift in Sources */,
                 110000012C1000010000019F /* MeetingListView.swift in Sources */,
@@ -284,7 +288,7 @@
                 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
                 CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 7L4H4W3H94;
-                CURRENT_PROJECT_VERSION = 25;
+                CURRENT_PROJECT_VERSION = 26;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = DonsNotes/Info.plist;
                 LD_RUNPATH_SEARCH_PATHS = (
@@ -307,7 +311,7 @@
                 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
                 CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 7L4H4W3H94;
-                CURRENT_PROJECT_VERSION = 25;
+                CURRENT_PROJECT_VERSION = 26;
                 GENERATE_INFOPLIST_FILE = NO;
                 INFOPLIST_FILE = DonsNotes/Info.plist;
                 LD_RUNPATH_SEARCH_PATHS = (
