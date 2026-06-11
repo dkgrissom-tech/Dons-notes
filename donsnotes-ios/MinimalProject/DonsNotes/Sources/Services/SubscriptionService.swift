@@ -53,6 +53,7 @@ class SubscriptionService: ObservableObject {
     // MARK: - Access guard (readable from any context — just a computed var on stored props)
     var canUseLumenAI: Bool {
         isOwner || currentTier == .lumenPro || currentTier == .lifetime
+            || ReferralService.shared.hasReferralBonus
     }
 
     var canTranscribeMore: Bool { true }

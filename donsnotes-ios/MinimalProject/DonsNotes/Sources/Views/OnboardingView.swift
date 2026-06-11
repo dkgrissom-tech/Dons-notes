@@ -14,6 +14,11 @@ struct OnboardingView: View {
     @State private var logoOffset: CGFloat = 40
     @State private var logoOpacity: Double = 0
 
+    // MARK: - Referral step state
+    @State private var referralCode: String = ""
+    @State private var referralApplyError: Bool = false
+    @State private var referralApplySuccess: Bool = false
+
     private let pages: [OnboardingPage] = [
         OnboardingPage(
             title: "Meet LUMEN",
@@ -130,9 +135,9 @@ struct OnboardingView: View {
 
                 Spacer().frame(height: 32)
 
-                // Page dots
+                // Page dots (pages + 1 for referral step)
                 HStack(spacing: 8) {
-                    ForEach(0..<pages.count, id: \.self) { i in
+                    ForEach(0..<(pages.count + 1), id: \.self) { i in
                         Capsule()
                             .fill(i == currentPage ? LM.Colors.cyan : LM.Colors.textGhost.opacity(0.4))
                             .frame(width: i == currentPage ? 24 : 6, height: 6)
@@ -142,40 +147,47 @@ struct OnboardingView: View {
 
                 Spacer().frame(height: 40)
 
-                // CTA button
-                Button(action: handleCTA) {
-                    HStack(spacing: 10) {
-                        Text(currentPage == pages.count - 1 ? "Activate LUMEN" : "Continue")
-                            .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.black)
+                // Referral step — shown after the last regular page
+                if currentPage == pages.count {
+                    referralStepView
+                        .padding(.horizontal, 8)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                } else {
+                    // CTA button
+                    Button(action: handleCTA) {
+                        HStack(spacing: 10) {
+                            Text(currentPage == pages.count - 1 ? "Activate LUMEN" : "Continue")
+                                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.black)
 
-                        Image(systemName: currentPage == pages.count - 1 ? "bolt.fill" : "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.black)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 27)
-                                .fill(LM.Colors.cyan)
-                            RoundedRectangle(cornerRadius: 27)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            Image(systemName: currentPage == pages.count - 1 ? "bolt.fill" : "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.black)
                         }
-                    )
-                    .shadow(color: LM.Colors.cyan.opacity(0.5), radius: 16, x: 0, y: 4)
-                }
-                .padding(.horizontal, 32)
-                .buttonStyle(PlainButtonStyle())
-
-                // Skip
-                if currentPage < pages.count - 1 {
-                    Button("Skip") {
-                        completeOnboarding()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 27)
+                                    .fill(LM.Colors.cyan)
+                                RoundedRectangle(cornerRadius: 27)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            }
+                        )
+                        .shadow(color: LM.Colors.cyan.opacity(0.5), radius: 16, x: 0, y: 4)
                     }
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
-                    .foregroundColor(LM.Colors.textGhost)
-                    .padding(.top, 16)
+                    .padding(.horizontal, 32)
+                    .buttonStyle(PlainButtonStyle())
+
+                    // Skip
+                    if currentPage < pages.count - 1 {
+                        Button("Skip") {
+                            completeOnboarding()
+                        }
+                        .font(.system(size: 13, weight: .regular, design: .monospaced))
+                        .foregroundColor(LM.Colors.textGhost)
+                        .padding(.top, 16)
+                    }
                 }
 
                 Spacer().frame(height: 48)
@@ -231,14 +243,108 @@ struct OnboardingView: View {
         .padding(.horizontal, 16)
     }
 
+    // MARK: - Referral Step View
+    @ViewBuilder
+    private var referralStepView: some View {
+        VStack(spacing: 20) {
+            Text("Got a referral code?")
+                .font(.system(size: 24, weight: .thin, design: .monospaced))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .shadow(color: LM.Colors.cyan.opacity(0.4), radius: 8)
+
+            Text("Enter it below to get 30 days of Lumen Pro free.")
+                .font(.system(size: 15, weight: .regular))
+                .foregroundColor(LM.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(6)
+
+            TextField("Enter code (e.g. ABC123)", text: $referralCode)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .font(.system(size: 22, weight: .semibold, design: .monospaced))
+                .foregroundColor(LM.Colors.cyan)
+                .multilineTextAlignment(.center)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(LM.Colors.cyan.opacity(0.4), lineWidth: 1)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.04)))
+                )
+                .onChange(of: referralCode) { _, newValue in
+                    referralCode = String(newValue.uppercased().prefix(6))
+                    referralApplyError = false
+                    referralApplySuccess = false
+                }
+
+            if referralApplyError {
+                Text("Invalid code — please check and try again.")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.red)
+            }
+            if referralApplySuccess {
+                Text("Bonus activated! 30 days of Lumen Pro unlocked.")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(LM.Colors.cyan)
+            }
+
+            // Apply button
+            Button(action: applyOnboardingReferral) {
+                Text("Apply Code")
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 27).fill(LM.Colors.cyan)
+                            RoundedRectangle(cornerRadius: 27).stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        }
+                    )
+                    .shadow(color: LM.Colors.cyan.opacity(0.5), radius: 16, x: 0, y: 4)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .disabled(referralCode.count != 6)
+            .opacity(referralCode.count == 6 ? 1.0 : 0.4)
+
+            // Skip
+            Button("Skip") {
+                completeOnboarding()
+            }
+            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .foregroundColor(LM.Colors.textGhost)
+        }
+    }
+
     // MARK: - Actions
     private func handleCTA() {
         if currentPage < pages.count - 1 {
             withAnimation(.spring(response: 0.4)) {
                 currentPage += 1
             }
+        } else if currentPage == pages.count - 1 {
+            // Advance to referral step
+            withAnimation(.spring(response: 0.4)) {
+                currentPage = pages.count
+            }
         } else {
             completeOnboarding()
+        }
+    }
+
+    private func applyOnboardingReferral() {
+        let success = ReferralService.shared.applyReferralCode(referralCode)
+        if success {
+            referralApplySuccess = true
+            referralApplyError = false
+            // Brief delay so user sees the confirmation, then complete onboarding
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                completeOnboarding()
+            }
+        } else {
+            referralApplyError = true
+            referralApplySuccess = false
         }
     }
 
