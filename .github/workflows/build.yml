@@ -77,3 +77,68 @@ jobs:
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: bundle exec fastlane beta
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # App Store submission — triggers ONLY on release tags (v*.*.*-release)
+  # Usage: git tag v1.5.0-release && git push origin v1.5.0-release
+  # This will build a fresh IPA and submit it to App Store review automatically.
+  # ─────────────────────────────────────────────────────────────────────────────
+  submit-appstore:
+    if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref, '-release')
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: donsnotes-ios/MinimalProject
+
+      - name: Set up App Store Connect API Key file
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf "%s" "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+
+      - name: Import distribution certificate and provisioning profile
+        run: |
+          security create-keychain -p "ci_keychain_pass" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "ci_keychain_pass" build.keychain
+          security set-keychain-settings -t 3600 -l build.keychain
+
+          echo "${{ secrets.DISTRIBUTION_CERTIFICATE_P12 }}" | base64 --decode > /tmp/distribution.p12
+          security import /tmp/distribution.p12 \
+            -k build.keychain \
+            -P "${{ secrets.DISTRIBUTION_CERTIFICATE_PASSWORD }}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/xcodebuild \
+            -A
+          
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "ci_keychain_pass" \
+            build.keychain
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles
+          echo "${{ secrets.PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision
+          cp ~/Library/MobileDevice/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles/match_AppStore_com.donsnotes.app.mobileprovision
+
+      - name: Run Fastlane appstore lane
+        working-directory: donsnotes-ios/MinimalProject
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_BUNDLE_ID: ${{ secrets.APP_BUNDLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: bundle exec fastlane appstore
