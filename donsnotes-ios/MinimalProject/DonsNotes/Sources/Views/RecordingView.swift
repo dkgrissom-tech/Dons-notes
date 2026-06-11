@@ -106,6 +106,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
             }
         }
         .preferredColorScheme(.dark)
+        // Paywall: shown when free user taps orb and tries to use LUMEN AI
+        .sheet(isPresented: $lumen.isShowingPaywall) {
+            PlansView()
+        }
     }
 
     // MARK: - Setup Screen

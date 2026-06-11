@@ -1,0 +1,50 @@
+Lumen is the AI-powered meeting assistant that thinks with you — not just for you.
+
+Tap the orb. Lumen wakes up. Ask anything about your meeting. Get an instant answer, spoken back to you in a calm British voice.
+
+──────────────────────────
+WHAT LUMEN DOES
+──────────────────────────
+
+• Live transcription — every word captured in real time, hands-free
+• LUMEN AI — tap the orb mid-meeting to ask questions, get summaries, or identify action items
+• Automatic meeting summaries — organized notes the moment you stop recording
+• Attendee tracking — add names and emails before you start, get a full meeting roster
+• Full-text search — find anything across all your meetings instantly
+• Meeting history — every recording stored, accessible forever
+
+──────────────────────────
+THE LUMEN EXPERIENCE
+──────────────────────────
+
+The Lumen orb isn't just a mic button. It's a living, reactive interface. Watch it pulse when you speak. See it spin when it's thinking. Hear Daniel — your British AI colleague — respond the moment you tap.
+
+This isn't another boring transcription app. This is what meeting intelligence looks like.
+
+──────────────────────────
+LUMEN PRO — UNLOCK EVERYTHING
+──────────────────────────
+
+• Unlimited meetings & recordings
+• LUMEN AI voice assistant (tap-to-ask)
+• British voice responses via ElevenLabs
+• Post-meeting AI chat — ask anything after the meeting ends
+• Calendar integration
+• Boardroom silent mode — visual-only responses
+
+──────────────────────────
+PRIVACY FIRST
+──────────────────────────
+
+Your audio never leaves your device until you choose to upload it. All AI processing uses your own secure API keys. No third-party servers store your meeting content.
+
+──────────────────────────
+PRICING
+──────────────────────────
+
+Free — 3 meetings/month, basic transcription
+Pro — $12.99/month — unlimited meetings + AI summaries
+Lumen Pro — $19.99/month — everything + AI voice assistant
+Lifetime — $149 one-time — all Pro features, forever
+
+Subscriptions auto-renew monthly. Cancel anytime in your Apple ID settings.

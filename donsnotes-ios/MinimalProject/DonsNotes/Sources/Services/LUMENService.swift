@@ -29,6 +29,7 @@ final class LUMENService: ObservableObject {
     @Published var insights: [LUMENInsight] = []
     @Published var isProcessing: Bool = false
     @Published var isAwake: Bool = false     // true after orb tap, waiting for question
+    @Published var isShowingPaywall: Bool = false  // triggers PlansView sheet when free user tries AI
 
     // Trigger detection
     private let triggerWords = ["hey", "lumen"]
@@ -147,6 +148,15 @@ final class LUMENService: ObservableObject {
     // MARK: - Ask Claude
     func triggerQuestion(question: String, context: String) {
         guard !question.isEmpty else { return }
+        // Paywall: LUMEN AI requires Lumen Pro or Lifetime
+        guard SubscriptionService.shared.canUseLumenAI else {
+            DispatchQueue.main.async {
+                self.orbState = .listening
+                self.isAwake = false
+                self.isShowingPaywall = true
+            }
+            return
+        }
         DispatchQueue.main.async {
             self.isProcessing = true
             self.currentQuestion = question

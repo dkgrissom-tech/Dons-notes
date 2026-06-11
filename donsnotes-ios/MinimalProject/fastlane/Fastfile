@@ -3,6 +3,12 @@ default_platform(:ios)
 platform :ios do
   desc "Deploy to TestFlight"
   lane :beta do
+    # NOTE: In-App Purchase product IDs that must be created in App Store Connect:
+    #   com.donsnotes.app.pro.monthly        — Auto-Renewable Subscription, $12.99/mo
+    #   com.donsnotes.app.lumenpro.monthly   — Auto-Renewable Subscription, $19.99/mo
+    #   com.donsnotes.app.lifetime           — Non-Consumable, $149
+    # Subscription group name: "Lumen Plans"
+    # Reference name for each: Pro Monthly, Lumen Pro Monthly, Lifetime Access
     api_key = app_store_connect_api_key(
       key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
       issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
@@ -31,6 +37,35 @@ platform :ios do
     upload_to_testflight(
       api_key: api_key,
       skip_waiting_for_build_processing: true
+    )
+  end
+
+  desc "Submit to App Store for review"
+  lane :appstore do
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_ISSUER_ID"],
+      key_filepath: "#{ENV["HOME"]}/.appstoreconnect/private_keys/AuthKey_#{ENV["APP_STORE_CONNECT_API_KEY_ID"]}.p8",
+      in_house: false
+    )
+
+    # Upload metadata (description, keywords, release notes)
+    deliver(
+      api_key: api_key,
+      app_identifier: ENV["APP_BUNDLE_ID"] || "com.donsnotes.app",
+      metadata_path: "./fastlane/metadata",
+      skip_screenshots: true,     # add screenshots manually in App Store Connect first
+      skip_binary_upload: true,   # reuse latest TestFlight build
+      submit_for_review: true,
+      automatic_release: false,   # manual release so you control launch timing
+      force: true,
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        content_rights_has_rights: true,
+        content_rights_contains_third_party_content: false,
+        export_compliance_encryption_updated: false,
+        export_compliance_uses_encryption: false
+      }
     )
   end
 end

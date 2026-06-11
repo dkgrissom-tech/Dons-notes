@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 // MARK: - PlansView
 struct PlansView: View {
@@ -6,6 +7,8 @@ struct PlansView: View {
     @Environment(\.dismiss) var dismiss
     @State private var showOwnerBypass = false
     @State private var selectedTier: SubscriptionTier = .lumenPro
+    @State private var showRestoreAlert = false
+    @State private var restoreMessage = ""
 
     var body: some View {
         ZStack {
@@ -17,6 +20,8 @@ struct PlansView: View {
                     VStack(spacing: 0) {
                         headerSection
                         plansStack
+                        purchaseButton
+                        restoreButton
                         ownerSection
                         footerNote
                     }
@@ -39,6 +44,19 @@ struct PlansView: View {
                     }
                 }
             }
+        }
+        .alert("Restore Purchases", isPresented: $showRestoreAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(restoreMessage)
+        }
+        .alert("Purchase Error", isPresented: Binding(
+            get: { subscriptionService.purchaseError != nil },
+            set: { if !$0 { subscriptionService.purchaseError = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(subscriptionService.purchaseError ?? "")
         }
     }
 
@@ -95,6 +113,64 @@ struct PlansView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.bottom, 28)
+    }
+
+    // MARK: - Purchase CTA
+    @ViewBuilder
+    private var purchaseButton: some View {
+        let isCurrent = subscriptionService.currentTier == selectedTier
+        let isFree = selectedTier == .free
+        if !isCurrent && !isFree {
+            VStack(spacing: 8) {
+                Button {
+                    guard let pid = LUMENProductID.allCases.first(where: { $0.tier == selectedTier }) else { return }
+                    Task { await subscriptionService.purchase(pid) }
+                } label: {
+                    ZStack {
+                        if subscriptionService.isPurchasing {
+                            ProgressView()
+                                .tint(.black)
+                        } else {
+                            Text("Subscribe — \(subscriptionService.price(for: LUMENProductID.allCases.first(where: { $0.tier == selectedTier }) ?? .lumenPro))")
+                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.black)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(LM.Colors.cyan)
+                    .cornerRadius(LM.Radius.lg)
+                }
+                .disabled(subscriptionService.isPurchasing || subscriptionService.isLoadingProducts)
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+
+                Text("Secure payment via Apple · Cancel anytime")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(LM.Colors.textGhost)
+            }
+        }
+    }
+
+    // MARK: - Restore
+    private var restoreButton: some View {
+        Button {
+            Task {
+                await subscriptionService.restorePurchases()
+                if subscriptionService.currentTier != .free {
+                    restoreMessage = "Your purchases have been restored."
+                } else {
+                    restoreMessage = "No active purchases found."
+                }
+                showRestoreAlert = true
+            }
+        } label: {
+            Text("Restore Purchases")
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundColor(LM.Colors.textGhost)
+                .underline()
+        }
+        .padding(.top, 12)
     }
 
     // MARK: - Plans
@@ -156,14 +232,12 @@ struct PlansView: View {
     // MARK: - Footer
     private var footerNote: some View {
         VStack(spacing: 8) {
-            Text("Payments coming soon")
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                .foregroundColor(LM.Colors.textGhost)
-                .padding(.top, 28)
-
-            Text("Cancel anytime · Secure billing")
-                .font(.system(size: 11))
+            Text("Subscriptions auto-renew. Cancel anytime in Settings.")
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .foregroundColor(LM.Colors.textGhost.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .padding(.top, 20)
+                .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity)
         .onLongPressGesture(minimumDuration: 3) {
