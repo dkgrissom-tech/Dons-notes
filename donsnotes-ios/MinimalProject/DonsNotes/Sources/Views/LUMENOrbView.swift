@@ -14,8 +14,12 @@ private struct OrbFrame {
     let orbScale: CGFloat
     let glowOpacity: Double
     let ripples: [(scale: CGFloat, opacity: Double)]  // 3 rings
-    let arcDegrees: Double
-    let showArc: Bool
+    // Jarvis ring angles — 3 arcs at different speeds/directions
+    let ring1Degrees: Double   // inner: fast CW
+    let ring2Degrees: Double   // middle: medium CCW
+    let ring3Degrees: Double   // outer: slow CW
+    let ringOpacity: Double    // overall ring brightness based on state
+    let ringSpeedMult: Double  // speed multiplier based on state
 
     init(state: LUMENOrbState, amp: Float, pulse: Bool, t: Double) {
         let pulseRange: CGFloat = (state == .idle || state == .dormant) ? 0.05 : 0.12
@@ -23,8 +27,32 @@ private struct OrbFrame {
         let boost: CGFloat      = amp > 0.05 ? CGFloat(amp) * 0.25 : 0.0
         self.orbScale           = base + boost
         self.glowOpacity        = 0.45 + Double(amp) * 0.35
-        self.showArc            = (state == .responding || state == .triggered)
-        self.arcDegrees         = (t * 150).truncatingRemainder(dividingBy: 360)
+
+        // Ring brightness + speed per state
+        switch state {
+        case .dormant:
+            self.ringOpacity   = 0.12
+            self.ringSpeedMult = 0.3
+        case .idle:
+            self.ringOpacity   = 0.30
+            self.ringSpeedMult = 0.6
+        case .listening:
+            self.ringOpacity   = 0.75 + Double(amp) * 0.25
+            self.ringSpeedMult = 1.0  + Double(amp) * 0.8
+        case .triggered:
+            self.ringOpacity   = 1.0
+            self.ringSpeedMult = 2.2
+        case .responding:
+            self.ringOpacity   = 0.90
+            self.ringSpeedMult = 1.6
+        }
+
+        // Ring 1: inner, CW, 1.8s/rev  → 200°/s
+        self.ring1Degrees = (t * 200 * self.ringSpeedMult).truncatingRemainder(dividingBy: 360)
+        // Ring 2: middle, CCW, 2.8s/rev → 128°/s (negative = counter-clockwise)
+        self.ring2Degrees = -(t * 128 * self.ringSpeedMult).truncatingRemainder(dividingBy: 360)
+        // Ring 3: outer, CW, 4.2s/rev  → 86°/s
+        self.ring3Degrees = (t * 86  * self.ringSpeedMult).truncatingRemainder(dividingBy: 360)
 
         // 3 ripple rings: period=2s, delays 0/0.6/1.2, scale 0.8→2.5, opacity 0.8→0
         let period = 2.0
@@ -113,13 +141,59 @@ struct LUMENOrbView: View {
             rippleRing(ripple: frame.ripples[1])
             rippleRing(ripple: frame.ripples[2])
 
-            // Solid sphere body
-            sphereBody(orbScale: frame.orbScale, glowOpacity: frame.glowOpacity)
+            // ── Jarvis Arc Reactor Rings ──────────────────────────────────
+            // Ring 3 (outermost): thin slow orbit
+            jarvisArc(
+                diameter: size + 52,
+                trimLength: 0.06,
+                degrees: frame.ring3Degrees,
+                lineWidth: 1.5,
+                opacity: frame.ringOpacity * 0.45
+            )
+            // Ring 3 counter-arc (ghost tail, 180° offset)
+            jarvisArc(
+                diameter: size + 52,
+                trimLength: 0.03,
+                degrees: frame.ring3Degrees + 180,
+                lineWidth: 1.0,
+                opacity: frame.ringOpacity * 0.18
+            )
 
-            // Rotating arc when responding/triggered
-            if frame.showArc {
-                arcRing(degrees: frame.arcDegrees)
-            }
+            // Ring 2 (middle): counter-clockwise, medium
+            jarvisArc(
+                diameter: size + 32,
+                trimLength: 0.12,
+                degrees: frame.ring2Degrees,
+                lineWidth: 2.0,
+                opacity: frame.ringOpacity * 0.65
+            )
+            // Ring 2 counter-arc
+            jarvisArc(
+                diameter: size + 32,
+                trimLength: 0.05,
+                degrees: frame.ring2Degrees + 180,
+                lineWidth: 1.0,
+                opacity: frame.ringOpacity * 0.22
+            )
+
+            // Ring 1 (innermost): fast, brightest
+            jarvisArc(
+                diameter: size + 14,
+                trimLength: 0.22,
+                degrees: frame.ring1Degrees,
+                lineWidth: 2.5,
+                opacity: frame.ringOpacity
+            )
+            // Ring 1 highlight dot at leading tip
+            jarvisArcTip(
+                diameter: size + 14,
+                degrees: frame.ring1Degrees,
+                opacity: frame.ringOpacity
+            )
+            // ─────────────────────────────────────────────────────────────
+
+            // Solid sphere body (drawn AFTER rings so it sits on top)
+            sphereBody(orbScale: frame.orbScale, glowOpacity: frame.glowOpacity)
 
             // LUMEN label below sphere
             VStack {
@@ -193,14 +267,40 @@ struct LUMENOrbView: View {
         .shadow(color: stateColor.opacity(glowOpacity), radius: 20)
     }
 
+    // Jarvis arc: a trimmed circle arc at a given angle
     @ViewBuilder
-    private func arcRing(degrees: Double) -> some View {
+    private func jarvisArc(
+        diameter: CGFloat,
+        trimLength: CGFloat,
+        degrees: Double,
+        lineWidth: CGFloat,
+        opacity: Double
+    ) -> some View {
         Circle()
-            .trim(from: 0, to: 0.3)
-            .stroke(stateColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-            .frame(width: size + 14, height: size + 14)
+            .trim(from: 0, to: trimLength)
+            .stroke(
+                LinearGradient(
+                    colors: [stateColor, stateColor.opacity(0.1)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+            )
+            .frame(width: diameter, height: diameter)
             .rotationEffect(.degrees(degrees - 90))
-            .opacity(0.8)
+            .opacity(opacity)
+    }
+
+    // Bright dot at the leading tip of Ring 1 — the "energy head" of the arc
+    @ViewBuilder
+    private func jarvisArcTip(diameter: CGFloat, degrees: Double, opacity: Double) -> some View {
+        Circle()
+            .fill(stateColor)
+            .frame(width: 5, height: 5)
+            .offset(y: -(diameter / 2))
+            .rotationEffect(.degrees(degrees - 90))
+            .opacity(opacity)
+            .shadow(color: stateColor, radius: 4)
     }
 }
 
