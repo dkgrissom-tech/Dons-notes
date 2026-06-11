@@ -18,33 +18,28 @@ enum LUMENProductID: String, CaseIterable {
 }
 
 // MARK: - SubscriptionService (StoreKit 2)
-@MainActor
+// Not @MainActor — keeps it readable from nonisolated contexts (e.g. LUMENService).
+// All @Published mutations happen on the main thread via DispatchQueue.main.async.
 class SubscriptionService: ObservableObject {
     static let shared = SubscriptionService()
 
-    // Current verified entitlement
     @Published var currentTier: SubscriptionTier = .free
     @Published var isOwner: Bool = false
-
-    // StoreKit state
     @Published var products: [Product] = []
     @Published var isPurchasing: Bool = false
     @Published var purchaseError: String? = nil
     @Published var isLoadingProducts: Bool = true
 
-    // Owner bypass (internal demo mode — long-press 3s on footer)
     private let ownerKey = "is_owner_bypass"
-
-    // Transaction listener — must be held for the app lifetime
     private var transactionListenerTask: Task<Void, Error>?
 
     private init() {
-        self.isOwner = UserDefaults.standard.bool(forKey: ownerKey)
-        if isOwner { currentTier = .lumenPro }
-
-        // Start listening for transactions before anything else
+        let ownerSaved = UserDefaults.standard.bool(forKey: ownerKey)
+        if ownerSaved {
+            isOwner = true
+            currentTier = .lumenPro
+        }
         transactionListenerTask = listenForTransactions()
-
         Task {
             await loadProducts()
             await refreshEntitlements()
@@ -55,34 +50,45 @@ class SubscriptionService: ObservableObject {
         transactionListenerTask?.cancel()
     }
 
+    // MARK: - Access guard (readable from any context — just a computed var on stored props)
+    var canUseLumenAI: Bool {
+        isOwner || currentTier == .lumenPro || currentTier == .lifetime
+    }
+
+    var canTranscribeMore: Bool { true }
+
     // MARK: - Load Products
     func loadProducts() async {
-        isLoadingProducts = true
-        defer { isLoadingProducts = false }
+        DispatchQueue.main.async { self.isLoadingProducts = true }
         do {
             let ids = LUMENProductID.allCases.map(\.rawValue)
             let fetched = try await Product.products(for: ids)
-            // Sort: pro, lumenPro, lifetime
-            self.products = fetched.sorted { a, b in
+            let sorted = fetched.sorted { a, b in
                 let order = LUMENProductID.allCases.map(\.rawValue)
                 return (order.firstIndex(of: a.id) ?? 99) < (order.firstIndex(of: b.id) ?? 99)
             }
+            DispatchQueue.main.async {
+                self.products = sorted
+                self.isLoadingProducts = false
+            }
         } catch {
-            // Products unavailable (simulator without StoreKit config, or no internet)
-            // App still works — purchases just show an error
-            self.products = []
+            DispatchQueue.main.async {
+                self.products = []
+                self.isLoadingProducts = false
+            }
         }
     }
 
     // MARK: - Purchase
     func purchase(_ productID: LUMENProductID) async {
         guard !isPurchasing else { return }
-        isPurchasing = true
-        purchaseError = nil
+        DispatchQueue.main.async { self.isPurchasing = true; self.purchaseError = nil }
 
         guard let product = products.first(where: { $0.id == productID.rawValue }) else {
-            purchaseError = "Product unavailable. Please try again."
-            isPurchasing = false
+            DispatchQueue.main.async {
+                self.purchaseError = "Product unavailable. Please try again."
+                self.isPurchasing = false
+            }
             return
         }
 
@@ -91,120 +97,100 @@ class SubscriptionService: ObservableObject {
             switch result {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
-                await updateEntitlement(for: transaction)
+                let newTier = LUMENProductID(rawValue: transaction.productID)?.tier ?? .free
+                DispatchQueue.main.async {
+                    if newTier > self.currentTier { self.currentTier = newTier }
+                    self.isPurchasing = false
+                }
                 await transaction.finish()
             case .userCancelled:
-                break  // no error, user just backed out
+                DispatchQueue.main.async { self.isPurchasing = false }
             case .pending:
-                purchaseError = "Purchase pending approval (Ask to Buy)."
+                DispatchQueue.main.async {
+                    self.purchaseError = "Purchase pending approval (Ask to Buy)."
+                    self.isPurchasing = false
+                }
             @unknown default:
-                break
+                DispatchQueue.main.async { self.isPurchasing = false }
             }
         } catch {
-            purchaseError = "Purchase failed: \(error.localizedDescription)"
+            DispatchQueue.main.async {
+                self.purchaseError = "Purchase failed: \(error.localizedDescription)"
+                self.isPurchasing = false
+            }
         }
-
-        isPurchasing = false
     }
 
-    // MARK: - Restore Purchases
+    // MARK: - Restore
     func restorePurchases() async {
-        isPurchasing = true
-        purchaseError = nil
+        DispatchQueue.main.async { self.isPurchasing = true; self.purchaseError = nil }
         do {
             try await AppStore.sync()
             await refreshEntitlements()
         } catch {
-            purchaseError = "Restore failed: \(error.localizedDescription)"
+            DispatchQueue.main.async {
+                self.purchaseError = "Restore failed: \(error.localizedDescription)"
+            }
         }
-        isPurchasing = false
+        DispatchQueue.main.async { self.isPurchasing = false }
     }
 
     // MARK: - Entitlement Refresh
-    // Checks all current entitlements against App Store receipts.
-    // Call on app launch and after any purchase.
     func refreshEntitlements() async {
         guard !isOwner else { return }
         var highestTier: SubscriptionTier = .free
-
         for await result in Transaction.currentEntitlements {
             guard let transaction = try? checkVerified(result) else { continue }
             if !transaction.isUpgraded {
-                if let productID = LUMENProductID(rawValue: transaction.productID) {
-                    let tier = productID.tier
-                    highestTier = max(highestTier, tier)
+                if let pid = LUMENProductID(rawValue: transaction.productID) {
+                    highestTier = max(highestTier, pid.tier)
                 }
             }
         }
-        self.currentTier = highestTier
+        let tier = highestTier
+        DispatchQueue.main.async { self.currentTier = tier }
     }
 
     // MARK: - Transaction Listener
-    // Handles purchases made outside the app (e.g. family sharing, StoreKit promotions)
     private func listenForTransactions() -> Task<Void, Error> {
-        Task.detached {
+        Task.detached { [weak self] in
             for await result in Transaction.updates {
-                guard let transaction = try? await MainActor.run(body: { [weak self] in
-                    try self?.checkVerified(result)
-                }) else { continue }
-                await MainActor.run { [weak self] in
-                    Task { await self?.updateEntitlement(for: transaction) }
+                guard let self else { return }
+                guard let transaction = try? self.checkVerified(result) else { continue }
+                if let pid = LUMENProductID(rawValue: transaction.productID) {
+                    let newTier = pid.tier
+                    DispatchQueue.main.async {
+                        if newTier > self.currentTier { self.currentTier = newTier }
+                    }
                 }
                 await transaction.finish()
             }
         }
     }
 
-    // MARK: - Helpers
-    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
-        switch result {
-        case .unverified(_, let error):
-            throw error
-        case .verified(let value):
-            return value
-        }
-    }
-
-    private func updateEntitlement(for transaction: Transaction) async {
-        if let productID = LUMENProductID(rawValue: transaction.productID) {
-            let newTier = productID.tier
-            if newTier > currentTier {
-                currentTier = newTier
-            }
-        }
-    }
-
-    // MARK: - Owner Bypass (internal demo)
+    // MARK: - Owner Bypass
     func setOwnerBypass(_ enabled: Bool) {
         isOwner = enabled
         UserDefaults.standard.set(enabled, forKey: ownerKey)
         currentTier = enabled ? .lumenPro : .free
-        if !enabled {
-            Task { await refreshEntitlements() }
-        }
+        if !enabled { Task { await refreshEntitlements() } }
     }
 
-    // MARK: - Access Guards
-    var canUseLumenAI: Bool {
-        isOwner || currentTier == .lumenPro || currentTier == .lifetime
-    }
-
-    var canTranscribeMore: Bool {
-        // Free tier gets 3 meetings/month — always true for now, enforce later with usage tracking
-        true
-    }
-
-    // MARK: - Formatted price helper
+    // MARK: - Display Price
     func price(for productID: LUMENProductID) -> String {
-        guard let product = products.first(where: { $0.id == productID.rawValue }) else {
-            // Fallback to static pricing if products not loaded
-            return productID.tier.price
+        products.first(where: { $0.id == productID.rawValue })?.displayPrice ?? productID.tier.price
+    }
+
+    // MARK: - Verification
+    private func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
+        switch result {
+        case .unverified(_, let error): throw error
+        case .verified(let value): return value
         }
-        return product.displayPrice
     }
 }
 
-// MARK: - SubscriptionTier ordering for entitlement comparison
+// MARK: - SubscriptionTier Comparable
 extension SubscriptionTier: Comparable {
     private var rank: Int {
         switch self {
