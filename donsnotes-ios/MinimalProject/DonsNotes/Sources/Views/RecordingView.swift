@@ -227,7 +227,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
-                    Text("Say \"Hey Lumen\" during the meeting to ask AI a question")
+                    Text("Say \"Lumen\" during the meeting to ask AI a question")
                         .font(LM.Fonts.text(12))
                         .foregroundColor(LM.Colors.textTertiary)
                 }
