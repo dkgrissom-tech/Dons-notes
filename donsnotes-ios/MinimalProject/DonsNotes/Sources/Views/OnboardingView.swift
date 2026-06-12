@@ -27,7 +27,7 @@ struct OnboardingView: View {
             accentColor: LM.Colors.cyan
         ),
         OnboardingPage(
-            title: "Hey Lumen",
+            title: "just say Lumen",
             subtitle: "Ask questions mid-meeting.\nLUMEN answers instantly — voice or silent.",
             icon: "waveform.badge.mic",
             accentColor: LM.Colors.cyan
