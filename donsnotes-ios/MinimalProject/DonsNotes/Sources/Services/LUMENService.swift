@@ -70,7 +70,7 @@ final class LUMENService: ObservableObject {
 
     // MARK: - Transcript Processing
     //
-    // SIMPLE APPROACH: search the full lowercased transcript string for "hey lumen".
+    // SIMPLE APPROACH: search the full lowercased transcript string for "lumen".
     // No word-splitting, no buffers, no punctuation stripping.
     // Works regardless of how Apple's speech engine formats the words.
     // We track what index we last found a trigger at so we don't fire twice.
@@ -95,8 +95,8 @@ final class LUMENService: ObservableObject {
 
         // If already capturing a question after hey-lumen trigger, collect new words.
         if captureNextSentence {
-            // The question is everything after "hey lumen" in the full transcript.
-            if let range = lower.range(of: "hey lumen") {
+            // The question is everything after  "lumen" in the full transcript.
+            if let range = lower.range(of: "lumen") {
                 let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if afterTrigger.count > 3 {
                     captureNextSentence = false
@@ -107,17 +107,17 @@ final class LUMENService: ObservableObject {
             return
         }
 
-        // Look for "hey lumen" anywhere in the transcript.
+        // Look for "lumen" anywhere in the transcript.
         // Only fire if we haven't already fired on this exact trigger position.
-        if lower.contains("hey lumen") {
+        if lower.contains("lumen") {
             // Make sure we haven't already handled this trigger.
             guard !alreadyTriggered else { return }
             alreadyTriggered = true
 
             DispatchQueue.main.async { self.orbState = .triggered }
 
-            // Collect what comes after "hey lumen" as the question.
-            if let range = lower.range(of: "hey lumen") {
+            // Collect what comes after "lumen" as the question.
+            if let range = lower.range(of: "lumen") {
                 let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if afterTrigger.count > 3 {
                     triggerQuestion(question: afterTrigger, context: fullContext)
