@@ -53,6 +53,8 @@
     <string>We need access to your microphone to record meeting voice notes and for voice input.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
     <string>We use speech recognition to transcribe your meetings and enable voice commands.</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>UIApplicationShortcutItems</key>
     <array>
         <dict>
