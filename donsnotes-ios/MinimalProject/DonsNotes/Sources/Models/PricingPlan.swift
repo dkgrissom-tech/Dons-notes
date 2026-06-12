@@ -54,7 +54,7 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
         case .lumenPro:
             return [
                 "Everything in Pro",
-                "Hey Lumen voice trigger",
+                "Lumen voice trigger",
                 "Live Q&A during meetings",
                 "Voice responses (ElevenLabs)",
                 "Post-meeting AI chat",
