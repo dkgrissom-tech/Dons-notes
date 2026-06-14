@@ -187,8 +187,9 @@ final class LUMENService: ObservableObject {
                     }
                 }
             } catch {
+                let msg = error.localizedDescription
                 await MainActor.run {
-                    self.currentAnswer = "I couldn't process that right now. Please try again."
+                    self.currentAnswer = "Error: \(msg)"
                     self.isShowingResponse = true
                     self.isProcessing = false
                     self.orbState = .listening
@@ -199,10 +200,15 @@ final class LUMENService: ObservableObject {
 
     // Manual ask (from post-meeting chat)
     func ask(question: String, context: String) async -> String {
+        guard !claudeKey.isEmpty else {
+            return "Lumen AI key not configured. Please contact support."
+        }
         do {
             return try await askClaude(question: question, context: context)
         } catch {
-            return "I couldn't process that request."
+            let msg = error.localizedDescription
+            // Return actionable message — includes HTTP status for debugging
+            return "Lumen couldn't respond (\(msg)). Check your connection and try again."
         }
     }
 
@@ -238,7 +244,11 @@ final class LUMENService: ObservableObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+            // Surface the actual HTTP status so we can diagnose key/auth issues
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "LUMENService", code: statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: "Claude HTTP \(statusCode): \(body.prefix(200))"])
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
