@@ -52,7 +52,10 @@ class SubscriptionService: ObservableObject {
 
     // MARK: - Access guard (readable from any context — just a computed var on stored props)
     var canUseLumenAI: Bool {
-        isOwner || currentTier == .lumenPro || currentTier == .lifetime
+        // Also check UserDefaults directly as a safety net — isOwner should match
+        // but a background Task race on init could cause a brief mismatch.
+        let ownerSaved = UserDefaults.standard.bool(forKey: ownerKey)
+        return isOwner || ownerSaved || currentTier == .lumenPro || currentTier == .lifetime
             || ReferralService.shared.hasReferralBonus
     }
 

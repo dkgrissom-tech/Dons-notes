@@ -5,7 +5,8 @@ import StoreKit
 struct PlansView: View {
     @ObservedObject var subscriptionService = SubscriptionService.shared
     @Environment(\.dismiss) var dismiss
-    @State private var showOwnerBypass = false
+    // Pre-reveal bypass panel if owner mode is already active
+    @State private var showOwnerBypass = UserDefaults.standard.bool(forKey: "is_owner_bypass")
     @State private var selectedTier: SubscriptionTier = .lumenPro
     @State private var showRestoreAlert = false
     @State private var restoreMessage = ""
@@ -240,7 +241,7 @@ struct PlansView: View {
                 .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity)
-        .onLongPressGesture(minimumDuration: 3) {
+        .onLongPressGesture(minimumDuration: 1.5) {
             withAnimation { showOwnerBypass.toggle() }
         }
     }

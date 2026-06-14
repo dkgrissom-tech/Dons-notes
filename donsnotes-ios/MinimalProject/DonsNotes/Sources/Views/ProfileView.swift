@@ -117,12 +117,12 @@ struct ProfileView: View {
                 // Hidden section — tap the header 5 times to reveal the bypass toggle.
                 // Lets the owner test all Lumen Pro features without a real subscription.
                 Section(header:
-                    Text(devTapCount >= 5 ? "Developer Access" : " ")
+                    Text(devTapCount >= 3 ? "Developer Access" : " ")
                         .onTapGesture {
                             devTapCount += 1
                         }
                 ) {
-                    if devTapCount >= 5 {
+                    if devTapCount >= 3 {
                         Toggle(isOn: Binding(
                             get: { subscriptionService.isOwner },
                             set: { subscriptionService.setOwnerBypass($0) }
