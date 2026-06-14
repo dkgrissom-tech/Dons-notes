@@ -15,7 +15,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @ObservedObject var profileService = ProfileService.shared
     @StateObject var speechService = SpeechRecognizerService()
     @StateObject var lumen = LUMENService()
-    @StateObject private var voiceInput = AttendeeVoiceInput()
+    @StateObject private var voiceInput = AttendeeVoiceInput()      // name field mic
+    @StateObject private var emailVoiceInput = AttendeeVoiceInput() // email field mic
     @State private var attendees: [Attendee] = []
     @State private var newAttendeeEmail = ""
     @State private var newAttendeeName = ""
@@ -105,10 +106,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
             .onChange(of: voiceInput.dictatedText) { _, newValue in
                 guard !newValue.isEmpty else { return }
                 newAttendeeName = newValue
-                // Auto-advance to email field once voice dictation fills the name.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     emailFieldFocused = true
                 }
+            }
+            .onChange(of: emailVoiceInput.dictatedText) { _, newValue in
+                guard !newValue.isEmpty else { return }
+                // Strip spaces — email addresses have none
+                newAttendeeEmail = newValue.replacingOccurrences(of: " ", with: "").lowercased()
             }
         }
         .preferredColorScheme(.dark)
@@ -193,16 +198,27 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             }
                         }
                         .padding(.horizontal, LM.Space.md)
-                        LUMENTextField(
-                            placeholder: "Email",
-                            text: $newAttendeeEmail,
-                            icon: "envelope",
-                            contentType: .emailAddress,
-                            keyboard: .emailAddress,
-                            submitLabel: .done,
-                            onSubmit: { addAttendee() }
-                        )
-                        .focused($emailFieldFocused)
+                        HStack(spacing: 8) {
+                            LUMENTextField(
+                                placeholder: "Email",
+                                text: $newAttendeeEmail,
+                                icon: "envelope",
+                                contentType: .emailAddress,
+                                keyboard: .emailAddress,
+                                submitLabel: .done,
+                                onSubmit: { addAttendee() }
+                            )
+                            .focused($emailFieldFocused)
+                            Button(action: {
+                                if emailVoiceInput.isRecording { emailVoiceInput.stop() }
+                                else { emailVoiceInput.start(seconds: 5) }
+                            }) {
+                                Image(systemName: emailVoiceInput.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
+                                    .font(LM.Fonts.text(26))
+                                    .foregroundColor(emailVoiceInput.isRecording ? LM.Colors.green : LM.Colors.cyan)
+                                    .symbolEffect(.pulse, isActive: emailVoiceInput.isRecording)
+                            }
+                        }
                         .padding(.horizontal, LM.Space.md)
                         HStack(spacing: 10) {
                             LUMENButton(title: "Add", icon: "plus",
