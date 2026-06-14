@@ -8,6 +8,7 @@ struct ProfileView: View {
     @State private var referralApplyError: Bool = false
     @State private var referralApplySuccess: Bool = false
     @State private var showCopiedConfirmation: Bool = false
+    @State private var devTapCount: Int = 0
     @Environment(\.dismiss) var dismiss
 
     private var referralService: ReferralService { ReferralService.shared }
@@ -102,12 +103,38 @@ struct ProfileView: View {
                     HStack {
                         Text("Current Plan")
                         Spacer()
-                        Text(SubscriptionService.shared.currentTier.title)
-                            .foregroundColor(.secondary)
+                        Text(SubscriptionService.shared.isOwner ? "Lumen Pro (Dev)" : SubscriptionService.shared.currentTier.title)
+                            .foregroundColor(SubscriptionService.shared.isOwner ? .cyan : .secondary)
                     }
 
                     Button("View Plans & Pricing") {
                         isShowingPricing = true
+                    }
+                }
+
+                // MARK: - Developer Access
+                // Hidden section — tap the header 5 times to reveal the bypass toggle.
+                // Lets the owner test all Lumen Pro features without a real subscription.
+                Section(header:
+                    Text(devTapCount >= 5 ? "Developer Access" : " ")
+                        .onTapGesture {
+                            devTapCount += 1
+                        }
+                ) {
+                    if devTapCount >= 5 {
+                        Toggle(isOn: Binding(
+                            get: { SubscriptionService.shared.isOwner },
+                            set: { SubscriptionService.shared.setOwnerBypass($0) }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Full Access Override")
+                                    .font(.subheadline)
+                                Text("Unlocks all Lumen Pro features for testing")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .tint(.cyan)
                     }
                 }
 
