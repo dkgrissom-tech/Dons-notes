@@ -31,10 +31,10 @@ private struct OrbFrame {
         // Ring brightness + speed per state
         switch state {
         case .dormant:
-            self.ringOpacity   = 0.12
+            self.ringOpacity   = 0.45   // raised: orb must be clearly visible on setup screen
             self.ringSpeedMult = 0.3
         case .idle:
-            self.ringOpacity   = 0.30
+            self.ringOpacity   = 0.55   // raised: more visible when not recording
             self.ringSpeedMult = 0.6
         case .listening:
             self.ringOpacity   = 0.75 + Double(amp) * 0.25
@@ -108,7 +108,7 @@ struct LUMENOrbView: View {
                 )
             )
         }
-        .frame(width: size * 1.7, height: size * 1.7 + 28)
+        .frame(width: size * 2.0, height: size * 2.0 + 28)   // wider frame so outer rings don't clip
         .onAppear { startPulse() }
         .onChange(of: state) { _, _ in
             pulse = false
@@ -142,9 +142,11 @@ struct LUMENOrbView: View {
             rippleRing(ripple: frame.ripples[2])
 
             // ── Jarvis Arc Reactor Rings ──────────────────────────────────
+            // Ring diameters are pre-computed in OrbFrame (no let bindings here)
+
             // Ring 3 (outermost): thin slow orbit
             jarvisArc(
-                diameter: size + 52,
+                diameter: frame.r3d,
                 trimLength: 0.06,
                 degrees: frame.ring3Degrees,
                 lineWidth: 1.5,
@@ -152,7 +154,7 @@ struct LUMENOrbView: View {
             )
             // Ring 3 counter-arc (ghost tail, 180° offset)
             jarvisArc(
-                diameter: size + 52,
+                diameter: frame.r3d,
                 trimLength: 0.03,
                 degrees: frame.ring3Degrees + 180,
                 lineWidth: 1.0,
@@ -161,7 +163,7 @@ struct LUMENOrbView: View {
 
             // Ring 2 (middle): counter-clockwise, medium
             jarvisArc(
-                diameter: size + 32,
+                diameter: frame.r2d,
                 trimLength: 0.12,
                 degrees: frame.ring2Degrees,
                 lineWidth: 2.0,
@@ -169,7 +171,7 @@ struct LUMENOrbView: View {
             )
             // Ring 2 counter-arc
             jarvisArc(
-                diameter: size + 32,
+                diameter: frame.r2d,
                 trimLength: 0.05,
                 degrees: frame.ring2Degrees + 180,
                 lineWidth: 1.0,
@@ -178,7 +180,7 @@ struct LUMENOrbView: View {
 
             // Ring 1 (innermost): fast, brightest
             jarvisArc(
-                diameter: size + 14,
+                diameter: frame.r1d,
                 trimLength: 0.22,
                 degrees: frame.ring1Degrees,
                 lineWidth: 2.5,
@@ -186,7 +188,7 @@ struct LUMENOrbView: View {
             )
             // Ring 1 highlight dot at leading tip
             jarvisArcTip(
-                diameter: size + 14,
+                diameter: frame.r1d,
                 degrees: frame.ring1Degrees,
                 opacity: frame.ringOpacity
             )

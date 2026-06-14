@@ -32,50 +32,50 @@ final class SpeechRecognizerService: ObservableObject {
 
     // MARK: - Public API
 
- func startListening() {
-// Refuse re-entry — if we're already listening, do nothing.
-guard !isListening else { return }
+    func startListening() {
+        // Refuse re-entry.
+        guard !isListening else { return }
 
-fullTranscript = ""
-transcript = ""
-recordingURL = nil
-recordingOutputURL = makeOutputURL()
+        fullTranscript = ""
+        transcript = ""
+        recordingURL = nil
+        recordingOutputURL = makeOutputURL()
 
-// 1. Request microphone permission FIRST.
-AVAudioApplication.requestRecordPermission { [weak self] micGranted in
-guard let self = self else { return }
-guard micGranted else {
-DispatchQueue.main.async {
-self.error = "Microphone access denied. Enable in Settings > Lumen > Microphone."
-self.isListening = false
-}
-return
-}
+        // Step 1: Microphone permission (iOS 14+ compatible).
+        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] micGranted in
+            guard let self = self else { return }
+            guard micGranted else {
+                DispatchQueue.main.async {
+                    self.error = "Microphone access denied. Enable in Settings > Lumen > Microphone."
+                    self.isListening = false
+                }
+                return
+            }
 
-// 2. Then request Speech Recognition permission.
-SFSpeechRecognizer.requestAuthorization { status in
-DispatchQueue.main.async {
-switch status {
-case .authorized:
-do {
-try self.beginRecording()
-} catch {
-self.error = "Mic error: \(error.localizedDescription)"
-self.isListening = false
-}
-case .denied:
-self.error = "Speech recognition denied. Enable in Settings > Lumen."
-case .restricted:
-self.error = "Speech recognition restricted on this device."
-case .notDetermined:
-self.error = "Speech recognition not authorized."
-@unknown default:
-break
-}
-}
-}
-}
-}
+            // Step 2: Speech recognition permission.
+            SFSpeechRecognizer.requestAuthorization { status in
+                DispatchQueue.main.async {
+                    switch status {
+                    case .authorized:
+                        do {
+                            try self.beginRecording()
+                        } catch {
+                            self.error = "Mic error: \(error.localizedDescription)"
+                            self.isListening = false
+                        }
+                    case .denied:
+                        self.error = "Speech recognition denied. Enable in Settings > Lumen."
+                    case .restricted:
+                        self.error = "Speech recognition restricted on this device."
+                    case .notDetermined:
+                        self.error = "Speech recognition not authorized."
+                    @unknown default:
+                        break
+                    }
+                }
+            }
+        }
+    }
 
     func stopListening() {
         guard isListening else { return }

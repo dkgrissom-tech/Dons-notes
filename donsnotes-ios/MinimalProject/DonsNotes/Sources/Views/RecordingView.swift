@@ -466,13 +466,17 @@ final class AttendeeVoiceInput: NSObject, ObservableObject {
     private func beginCapture(seconds: TimeInterval) {
         guard let recognizer = recognizer, recognizer.isAvailable else { return }
 
-        // Tear down anything left over (defensive — should be idle here).
+        // Tear down anything left over.
         stop()
         dictatedText = ""
 
+        // Use .playAndRecord (same as SpeechRecognizerService) so the session
+        // doesn't conflict if the user taps the mic button quickly after stopping.
+        // .duckOthers keeps audio from other sources quiet while dictating.
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: [.duckOthers])
+            try session.setCategory(.playAndRecord, mode: .measurement,
+                                    options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
             try session.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             return
