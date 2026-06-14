@@ -6,6 +6,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @ObservedObject var apiService: T
     @State private var timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     @State private var isSendingEmail = false
+    @State private var emailSentConfirmation = false
     @State private var isShowingShareSheet = false
     @State private var shareItems: [Any] = []
 
@@ -243,8 +244,17 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                     if meeting.status == .completed || meeting.status == .sent {
                         VStack(spacing: 10) {
                             LUMENButton(title: "Share Meeting Notes", icon: "square.and.arrow.up", style: .secondary, action: exportMeeting)
-                            LUMENButton(title: isSendingEmail ? "Sending..." : (meeting.status == .sent ? "Resend Recap Email" : "Send Recap Email"), icon: "envelope.fill", style: .primary, action: sendEmail)
-                                .disabled(isSendingEmail)
+                            LUMENButton(
+                                title: isSendingEmail ? "Sending..."
+                                    : emailSentConfirmation ? "Summary Sent!"
+                                    : (meeting.status == .sent ? "Resend Recap Email" : "Send Recap Email"),
+                                icon: isSendingEmail ? "paperplane.fill"
+                                    : emailSentConfirmation ? "checkmark.circle.fill"
+                                    : "envelope.fill",
+                                style: emailSentConfirmation ? .ghost : .primary,
+                                action: sendEmail
+                            )
+                            .disabled(isSendingEmail || emailSentConfirmation)
                         }
                     }
 
@@ -280,8 +290,16 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
             do {
                 try await apiService.sendRecapEmail(id: meeting.id)
                 refreshMeeting()
+                await MainActor.run {
+                    isSendingEmail = false
+                    emailSentConfirmation = true
+                }
+                // Reset confirmation label after 2.5 seconds
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await MainActor.run { emailSentConfirmation = false }
+            } catch {
                 await MainActor.run { isSendingEmail = false }
-            } catch { await MainActor.run { isSendingEmail = false } }
+            }
         }
     }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProfileView: View {
     @ObservedObject var profileService = ProfileService.shared
+    @ObservedObject var subscriptionService = SubscriptionService.shared
     @State private var name: String = ""
     @State private var isShowingPricing = false
     @State private var referralInput: String = ""
@@ -103,8 +104,8 @@ struct ProfileView: View {
                     HStack {
                         Text("Current Plan")
                         Spacer()
-                        Text(SubscriptionService.shared.isOwner ? "Lumen Pro (Dev)" : SubscriptionService.shared.currentTier.title)
-                            .foregroundColor(SubscriptionService.shared.isOwner ? .cyan : .secondary)
+                        Text(subscriptionService.isOwner ? "Lumen Pro (Dev)" : subscriptionService.currentTier.title)
+                            .foregroundColor(subscriptionService.isOwner ? .cyan : .secondary)
                     }
 
                     Button("View Plans & Pricing") {
@@ -123,8 +124,8 @@ struct ProfileView: View {
                 ) {
                     if devTapCount >= 5 {
                         Toggle(isOn: Binding(
-                            get: { SubscriptionService.shared.isOwner },
-                            set: { SubscriptionService.shared.setOwnerBypass($0) }
+                            get: { subscriptionService.isOwner },
+                            set: { subscriptionService.setOwnerBypass($0) }
                         )) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Full Access Override")
