@@ -2,12 +2,24 @@ import Foundation
 
 class RealAPIService: ObservableObject, APIServiceProtocol {
     private let baseURL = URL(string: "https://api.donsnotes.com/v1")!
+
+    // Attach owner/tier headers so the backend can skip free-tier limits
+    private func applyCommonHeaders(_ request: inout URLRequest) {
+        let sub = SubscriptionService.shared
+        if sub.isOwner {
+            request.setValue("true", forHTTPHeaderField: "X-Owner-Bypass")
+            request.setValue("lumenPro", forHTTPHeaderField: "X-Subscription-Tier")
+        } else {
+            request.setValue(sub.currentTier.rawValue, forHTTPHeaderField: "X-Subscription-Tier")
+        }
+    }
     
     func uploadMeeting(audioURL: URL, attendees: [Attendee], organizerName: String?) async throws -> Meeting {
         let uploadURL = baseURL.appendingPathComponent("/meetings/upload")
         var request = URLRequest(url: uploadURL)
         request.httpMethod = "POST"
-        
+        applyCommonHeaders(&request)
+
         let boundary = "Boundary-\(UUID().uuidString)"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         
@@ -73,6 +85,7 @@ class RealAPIService: ObservableObject, APIServiceProtocol {
         let sendURL = baseURL.appendingPathComponent("/meetings/\(id.uuidString.lowercased())/send")
         var request = URLRequest(url: sendURL)
         request.httpMethod = "POST"
+        applyCommonHeaders(&request)
         
         let (_, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
@@ -95,6 +108,7 @@ class RealAPIService: ObservableObject, APIServiceProtocol {
         var request = URLRequest(url: contactsURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyCommonHeaders(&request)
         request.httpBody = try JSONEncoder().encode(attendee)
         
         let (_, response) = try await URLSession.shared.data(for: request)
