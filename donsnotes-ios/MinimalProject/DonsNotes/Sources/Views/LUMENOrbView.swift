@@ -20,8 +20,11 @@ private struct OrbFrame {
     let ring3Degrees: Double   // outer: slow CW
     let ringOpacity: Double    // overall ring brightness based on state
     let ringSpeedMult: Double  // speed multiplier based on state
+    let r1d: CGFloat           // inner ring diameter
+    let r2d: CGFloat           // middle ring diameter
+    let r3d: CGFloat           // outer ring diameter
 
-    init(state: LUMENOrbState, amp: Float, pulse: Bool, t: Double) {
+    init(state: LUMENOrbState, amp: Float, pulse: Bool, t: Double, size: CGFloat = 160) {
         let pulseRange: CGFloat = (state == .idle || state == .dormant) ? 0.05 : 0.12
         let base: CGFloat       = 1.0 + (pulse ? pulseRange : 0.0)
         let boost: CGFloat      = amp > 0.05 ? CGFloat(amp) * 0.25 : 0.0
@@ -53,6 +56,10 @@ private struct OrbFrame {
         self.ring2Degrees = -(t * 128 * self.ringSpeedMult).truncatingRemainder(dividingBy: 360)
         // Ring 3: outer, CW, 4.2s/rev  → 86°/s
         self.ring3Degrees = (t * 86  * self.ringSpeedMult).truncatingRemainder(dividingBy: 360)
+        // Ring diameters scale with orb size (+8%, +20%, +32%)
+        self.r1d = size * 1.08
+        self.r2d = size * 1.20
+        self.r3d = size * 1.32
 
         // 3 ripple rings: period=2s, delays 0/0.6/1.2, scale 0.8→2.5, opacity 0.8→0
         let period = 2.0
@@ -104,7 +111,8 @@ struct LUMENOrbView: View {
                     state: state,
                     amp: speechService.audioLevel,
                     pulse: pulse,
-                    t: ctx.date.timeIntervalSinceReferenceDate
+                    t: ctx.date.timeIntervalSinceReferenceDate,
+                    size: size
                 )
             )
         }
