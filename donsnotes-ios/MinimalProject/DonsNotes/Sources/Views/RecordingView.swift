@@ -22,6 +22,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @State private var isUploading = false
     @State private var elapsedSeconds = 0
     @State private var recordingTimer: Timer? = nil
+    @FocusState private var nameFieldFocused: Bool
+    @FocusState private var emailFieldFocused: Bool
     @Environment(\.dismiss) var dismiss
 
     private var elapsedFormatted: String {
@@ -103,6 +105,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
             .onChange(of: voiceInput.dictatedText) { _, newValue in
                 guard !newValue.isEmpty else { return }
                 newAttendeeName = newValue
+                // Auto-advance to email field once voice dictation fills the name.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    emailFieldFocused = true
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -168,7 +174,16 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         .padding(.horizontal, LM.Space.md)
                     VStack(spacing: 8) {
                         HStack(spacing: 8) {
-                            LUMENTextField(placeholder: "Name", text: $newAttendeeName, icon: "person", contentType: .name, keyboard: .default)
+                            LUMENTextField(
+                                placeholder: "Name",
+                                text: $newAttendeeName,
+                                icon: "person",
+                                contentType: .name,
+                                keyboard: .default,
+                                submitLabel: .next,
+                                onSubmit: { emailFieldFocused = true }
+                            )
+                            .focused($nameFieldFocused)
                             // Voice dictation for the name — short one-shot, separate recognizer.
                             Button(action: toggleVoiceDictation) {
                                 Image(systemName: voiceInput.isRecording ? "waveform.circle.fill" : "mic.circle.fill")
@@ -178,8 +193,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             }
                         }
                         .padding(.horizontal, LM.Space.md)
-                        LUMENTextField(placeholder: "Email", text: $newAttendeeEmail, icon: "envelope", contentType: .emailAddress, keyboard: .emailAddress)
-                            .padding(.horizontal, LM.Space.md)
+                        LUMENTextField(
+                            placeholder: "Email",
+                            text: $newAttendeeEmail,
+                            icon: "envelope",
+                            contentType: .emailAddress,
+                            keyboard: .emailAddress,
+                            submitLabel: .done,
+                            onSubmit: { addAttendee() }
+                        )
+                        .focused($emailFieldFocused)
+                        .padding(.horizontal, LM.Space.md)
                         HStack(spacing: 10) {
                             LUMENButton(title: "Add", icon: "plus",
                                         style: (newAttendeeEmail.isEmpty || newAttendeeName.isEmpty) ? .ghost : .primary,

@@ -194,6 +194,9 @@ struct LUMENTextField: View {
     var contentType: UITextContentType? = nil
     var keyboard: UIKeyboardType = .default
     var autocorrect: Bool = true
+    var submitLabel: SubmitLabel = .next
+    var onSubmit: (() -> Void)? = nil
+    var focused: FocusState<Bool>.Binding? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -212,6 +215,8 @@ struct LUMENTextField: View {
                 .textContentType(contentType)
                 .autocorrectionDisabled(keyboard == .emailAddress || keyboard == .URL)
                 .textInputAutocapitalization(keyboard == .emailAddress ? .never : .words)
+                .submitLabel(submitLabel)
+                .onSubmit { onSubmit?() }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
