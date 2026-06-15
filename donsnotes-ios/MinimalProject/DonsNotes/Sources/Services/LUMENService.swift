@@ -115,7 +115,7 @@ final class LUMENService: ObservableObject {
             guard !alreadyTriggered else { return }
             alreadyTriggered = true
 
-            DispatchQueue.main.async { self.orbState = .triggered }
+            Task { @MainActor in self.orbState = .triggered }
 
             // Collect what comes after "lumen" as the question.
             if let range = lower.range(of: "lumen") {
@@ -127,7 +127,7 @@ final class LUMENService: ObservableObject {
                     captureNextSentence = true
                     triggerDetectedAt = Date()
                     questionBuffer = ""
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
                         if self.captureNextSentence { self.orbState = .listening }
                     }
                 }
@@ -151,14 +151,14 @@ final class LUMENService: ObservableObject {
         guard !question.isEmpty else { return }
         // Paywall: LUMEN AI requires Lumen Pro or Lifetime
         guard SubscriptionService.shared.canUseLumenAI else {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.orbState = .listening
                 self.isAwake = false
                 self.isShowingPaywall = true
             }
             return
         }
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.isProcessing = true
             self.currentQuestion = question
             self.orbState = .triggered      // thinking flash
@@ -182,7 +182,7 @@ final class LUMENService: ObservableObject {
                         }
                     } else {
                         // No speech — return to listening shortly.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(0.6 * 1_000_000_000))
                             self.orbState = .listening
                         }
                     }
@@ -275,7 +275,7 @@ final class LUMENService: ObservableObject {
             let player = try AVAudioPlayer(data: data)
             player.delegate = audioPlayerDelegate
             audioPlayerDelegate.onFinish = { [weak self] in
-                DispatchQueue.main.async { self?.orbState = .listening }
+                Task { @MainActor in self?.orbState = .listening }
             }
             audioPlayer = player
             player.play()
@@ -312,7 +312,7 @@ final class LUMENService: ObservableObject {
         orbState = .triggered
         speakWake()  // British guy says "Yes."
         // Delay activating question-capture until TTS has finished speaking (~1.5s)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(1.5 * 1_000_000_000)) [weak self] in
             guard let self = self else { return }
             // Snapshot transcript length HERE so we only capture words spoken after the beep
             self.wakeTranscriptLength = currentTranscript.count
