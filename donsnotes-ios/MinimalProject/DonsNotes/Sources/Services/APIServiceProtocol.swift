@@ -7,4 +7,6 @@ protocol APIServiceProtocol: ObservableObject {
     func sendRecapEmail(id: UUID) async throws
     func fetchContacts() async throws -> [Attendee]
     func saveContact(attendee: Attendee) async throws
+    // AI proxy — backend calls Claude so the key never lives in the app
+    func askAI(question: String, context: String) async throws -> String
 }

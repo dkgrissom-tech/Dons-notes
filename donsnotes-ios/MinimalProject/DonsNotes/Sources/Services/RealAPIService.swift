@@ -116,4 +116,29 @@ class RealAPIService: ObservableObject, APIServiceProtocol {
             throw URLError(.badServerResponse)
         }
     }
+
+    // MARK: - AI Proxy
+    // The backend holds the Anthropic key — the app never calls Claude directly.
+    func askAI(question: String, context: String) async throws -> String {
+        let url = baseURL.appendingPathComponent("/ai/ask")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyCommonHeaders(&request)
+
+        let body: [String: String] = ["question": question, "context": context]
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            let msg = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "RealAPIService", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "AI proxy HTTP \(status): \(msg.prefix(200))"])
+        }
+
+        struct AIResponse: Decodable { let answer: String }
+        let result = try JSONDecoder().decode(AIResponse.self, from: data)
+        return result.answer
+    }
 }

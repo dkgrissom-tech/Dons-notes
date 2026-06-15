@@ -53,8 +53,9 @@ final class LUMENService: ObservableObject {
     private let elevenLabsKey = Config.elevenLabsKey
     private let elevenLabsVoiceId = Config.elevenLabsVoiceId
 
-    // Claude API
-    private let claudeKey = Config.claudeKey
+    // Groq — free tier, OpenAI-compatible, zero cost per user
+    private let groqKey = Config.groqKey
+    private let groqModel = Config.groqModel
 
     private let voiceToggleKey = "lumen_voice_enabled"
 
@@ -165,7 +166,7 @@ final class LUMENService: ObservableObject {
 
         Task {
             do {
-                let answer = try await askClaude(question: question, context: context)
+                let answer = try await askGroq(question: question, context: context)
                 await MainActor.run {
                     self.currentAnswer = answer
                     self.isShowingResponse = true
@@ -200,60 +201,48 @@ final class LUMENService: ObservableObject {
 
     // Manual ask (from post-meeting chat)
     func ask(question: String, context: String) async -> String {
-        guard !claudeKey.isEmpty else {
-            return "Lumen AI key not configured. Please contact support."
-        }
         do {
-            return try await askClaude(question: question, context: context)
+            return try await askGroq(question: question, context: context)
         } catch {
-            let msg = error.localizedDescription
-            // Return actionable message — includes HTTP status for debugging
-            return "Lumen couldn't respond (\(msg)). Check your connection and try again."
+            return "Lumen couldn't respond (\(error.localizedDescription)). Check your connection."
         }
     }
 
-    private func askClaude(question: String, context: String) async throws -> String {
-        let url = URL(string: "https://api.anthropic.com/v1/messages")!
+    // Groq API — OpenAI-compatible, free tier, no cost to you or the user
+    private func askGroq(question: String, context: String) async throws -> String {
+        let url = URL(string: "https://api.groq.com/openai/v1/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(claudeKey, forHTTPHeaderField: "x-api-key")
-        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        request.setValue("Bearer \(groqKey)", forHTTPHeaderField: "Authorization")
 
-        let systemPrompt = """
-        You are LUMEN, an AI meeting assistant. You have access to the live transcript of an ongoing meeting.
-        Answer questions concisely and helpfully. Keep responses under 3 sentences for live meeting queries.
-        Be direct and professional. If the answer isn't in the transcript, use your general knowledge but mention it.
-        """
-
-        let userMessage = """
-        Meeting transcript so far:
-        \(context.prefix(3000))
-
-        Question: \(question)
-        """
+        let systemPrompt = "You are LUMEN, an AI meeting assistant. Answer concisely in 2-3 sentences. Be direct and professional. Use the meeting transcript if provided, otherwise use general knowledge."
+        let userMessage = context.isEmpty
+            ? question
+            : "Meeting transcript:\n\(context.prefix(3000))\n\nQuestion: \(question)"
 
         let body: [String: Any] = [
-            "model": Config.claudeModel,
+            "model": groqModel,
             "max_tokens": 300,
-            "system": systemPrompt,
-            "messages": [["role": "user", "content": userMessage]]
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": userMessage]
+            ]
         ]
-
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            // Surface the actual HTTP status so we can diagnose key/auth issues
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-            let body = String(data: data, encoding: .utf8) ?? ""
+            let bodyStr = String(data: data, encoding: .utf8) ?? ""
             throw NSError(domain: "LUMENService", code: statusCode,
-                          userInfo: [NSLocalizedDescriptionKey: "Claude HTTP \(statusCode): \(body.prefix(200))"])
+                          userInfo: [NSLocalizedDescriptionKey: "Groq HTTP \(statusCode): \(bodyStr.prefix(200))"])
         }
 
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let content = (json?["content"] as? [[String: Any]])?.first
-        return (content?["text"] as? String) ?? "I couldn't generate a response."
+        let choices = json?["choices"] as? [[String: Any]]
+        let message = choices?.first?["message"] as? [String: Any]
+        return (message?["content"] as? String) ?? "I couldn't generate a response."
     }
 
     // MARK: - ElevenLabs TTS

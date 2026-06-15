@@ -23,14 +23,16 @@ enum Config {
         return "onwK4e9ZLuTAKqWW03F9" // Daniel — British male broadcaster
     }()
 
-    // MARK: Anthropic / Claude
-    static let claudeKey: String = {
-        if let key = Bundle.main.infoDictionary?["ANTHROPIC_API_KEY"] as? String,
+    // MARK: Groq (free tier — replaces Anthropic, zero cost per user)
+    // Free at console.groq.com — no charges regardless of user count
+    static let groqKey: String = {
+        if let key = Bundle.main.infoDictionary?["GROQ_API_KEY"] as? String,
            !key.isEmpty, !key.hasPrefix("$(") {
             return key
         }
         return ""
     }()
 
-    static let claudeModel = "claude-3-5-haiku-20241022"
+    // llama-3.3-70b-versatile: best free Groq model for Q&A
+    static let groqModel = "llama-3.3-70b-versatile"
 }
