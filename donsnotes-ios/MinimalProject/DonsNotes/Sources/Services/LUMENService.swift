@@ -127,7 +127,8 @@ final class LUMENService: ObservableObject {
                     captureNextSentence = true
                     triggerDetectedAt = Date()
                     questionBuffer = ""
-                    Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
+                    Task { @MainActor in
+                        try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
                         if self.captureNextSentence { self.orbState = .listening }
                     }
                 }
@@ -182,7 +183,8 @@ final class LUMENService: ObservableObject {
                         }
                     } else {
                         // No speech — return to listening shortly.
-                        Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(0.6 * 1_000_000_000))
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: UInt64(0.6 * 1_000_000_000))
                             self.orbState = .listening
                         }
                     }
@@ -312,7 +314,8 @@ final class LUMENService: ObservableObject {
         orbState = .triggered
         speakWake()  // British guy says "Yes."
         // Delay activating question-capture until TTS has finished speaking (~1.5s)
-        Task { @MainActor in try? await Task.sleep(nanoseconds: UInt64(1.5 * 1_000_000_000)) [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(1.5 * 1_000_000_000))
             guard let self = self else { return }
             // Snapshot transcript length HERE so we only capture words spoken after the beep
             self.wakeTranscriptLength = currentTranscript.count
