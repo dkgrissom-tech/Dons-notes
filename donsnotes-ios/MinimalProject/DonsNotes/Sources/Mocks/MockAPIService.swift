@@ -65,6 +65,8 @@ class MockAPIService: ObservableObject, APIServiceProtocol {
         return contacts
     }
     
+    func askAI(question: String, context: String) async throws -> String { "Mock AI response." }
+
     func saveContact(attendee: Attendee) async throws {
         try await Task.sleep(nanoseconds: 500_000_000)
         if !contacts.contains(where: { $0.email == attendee.email }) {
