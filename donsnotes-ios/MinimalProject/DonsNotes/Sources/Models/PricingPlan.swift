@@ -54,7 +54,7 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
         case .oraPro:
             return [
                 "Everything in Pro",
-                "Lumen voice trigger",
+                "Ora voice trigger",
                 "Live Q&A during meetings",
                 "Voice responses (ElevenLabs)",
                 "Post-meeting AI chat",

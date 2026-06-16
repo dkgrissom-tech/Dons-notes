@@ -175,7 +175,7 @@ struct ProfileView: View {
 
     private func shareCode() {
         let code = referralService.myCode
-        let text = "Try Lumen free for 30 days — use my code \(code) when you first open the app. Download: https://testflight.apple.com/join/5YckE6M7"
+        let text = "Try Ora free for 30 days — use my code \(code) when you first open the app. Download: https://testflight.apple.com/join/5YckE6M7"
         let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let root = scene.windows.first?.rootViewController {

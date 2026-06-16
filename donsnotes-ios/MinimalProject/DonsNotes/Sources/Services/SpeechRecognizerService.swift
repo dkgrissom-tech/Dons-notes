@@ -49,7 +49,7 @@ final class SpeechRecognizerService: ObservableObject {
             guard let self = self else { return }
             guard micGranted else {
                 DispatchQueue.main.async {
-                    self.error = "Microphone access denied. Enable in Settings > Lumen > Microphone."
+                    self.error = "Microphone access denied. Enable in Settings > Ora > Microphone."
                     self.isListening = false
                 }
                 return
@@ -67,7 +67,7 @@ final class SpeechRecognizerService: ObservableObject {
                             self.isListening = false
                         }
                     case .denied:
-                        self.error = "Speech recognition denied. Enable in Settings > Lumen."
+                        self.error = "Speech recognition denied. Enable in Settings > Ora."
                     case .restricted:
                         self.error = "Speech recognition restricted on this device."
                     case .notDetermined:
