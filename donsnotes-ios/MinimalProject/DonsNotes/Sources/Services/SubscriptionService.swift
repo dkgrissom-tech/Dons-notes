@@ -5,7 +5,7 @@ import StoreKit
 // These must exactly match the In-App Purchase IDs created in App Store Connect
 enum LUMENProductID: String, CaseIterable {
     case pro        = "com.donsnotes.app.pro.monthly"
-    case oraPro   = "com.donsnotes.app.lumenpro.monthly"
+    case oraPro   = "com.donsnotes.app.orapro.monthly"
     case lifetime   = "com.donsnotes.app.lifetime"
 
     var tier: SubscriptionTier {
@@ -66,6 +66,8 @@ class SubscriptionService: ObservableObject {
         DispatchQueue.main.async { self.isLoadingProducts = true }
         do {
             let ids = LUMENProductID.allCases.map(\.rawValue)
+            // Product.products(for:) throws if App Store is unreachable or IAPs not yet created.
+            // Catch everything — missing IAPs are not a fatal error.
             let fetched = try await Product.products(for: ids)
             let sorted = fetched.sorted { a, b in
                 let order = LUMENProductID.allCases.map(\.rawValue)
@@ -76,6 +78,7 @@ class SubscriptionService: ObservableObject {
                 self.isLoadingProducts = false
             }
         } catch {
+            // Not fatal — IAPs may not be configured yet. App continues normally.
             DispatchQueue.main.async {
                 self.products = []
                 self.isLoadingProducts = false
@@ -143,11 +146,13 @@ class SubscriptionService: ObservableObject {
     func refreshEntitlements() async {
         guard !isOwner else { return }
         var highestTier: SubscriptionTier = .free
-        for await result in Transaction.currentEntitlements {
-            guard let transaction = try? checkVerified(result) else { continue }
-            if !transaction.isUpgraded {
-                if let pid = LUMENProductID(rawValue: transaction.productID) {
-                    highestTier = max(highestTier, pid.tier)
+        do {
+            for await result in Transaction.currentEntitlements {
+                guard let transaction = try? checkVerified(result) else { continue }
+                if !transaction.isUpgraded {
+                    if let pid = LUMENProductID(rawValue: transaction.productID) {
+                        highestTier = max(highestTier, pid.tier)
+                    }
                 }
             }
         }
