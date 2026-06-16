@@ -13,6 +13,9 @@ import Combine
 /// second AVAudioRecorder against the same input was the dual-driver conflict that
 /// produced silent taps (audioLevel stuck at 0, dead orb) and broke attendee audio.
 final class SpeechRecognizerService: ObservableObject {
+    /// Shared decorative instance for views that need an orb but no real audio.
+    /// Never call startListening() on this instance.
+    static let preview = SpeechRecognizerService()
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?

@@ -76,7 +76,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                     if isLoading && meetings.isEmpty {
                         Spacer()
                         VStack(spacing: 16) {
-                            LUMENOrbView(state: .idle, speechService: SpeechRecognizerService(), size: 80)
+                            LUMENOrbView(state: .idle, speechService: SpeechRecognizerService.preview, size: 80)
                             Text("LOADING...")
                                 .font(LM.Fonts.mono(11, weight: .bold))
                                 .foregroundColor(LM.Colors.textTertiary)
@@ -86,7 +86,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                     } else if filteredMeetings.isEmpty {
                         Spacer()
                         VStack(spacing: 16) {
-                            LUMENOrbView(state: .dormant, speechService: SpeechRecognizerService(), size: 80)
+                            LUMENOrbView(state: .dormant, speechService: SpeechRecognizerService.preview, size: 80)
                             Text(searchText.isEmpty ? "NO MEETINGS YET" : "NO RESULTS FOUND")
                                 .font(LM.Fonts.mono(12, weight: .bold))
                                 .foregroundColor(LM.Colors.textTertiary)

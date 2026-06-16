@@ -44,7 +44,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                             }
                             if meeting.status.isProcessing {
                                 HStack(spacing: 8) {
-                                    LUMENOrbView(state: .responding, speechService: SpeechRecognizerService(), size: 28)
+                                    LUMENOrbView(state: .responding, speechService: SpeechRecognizerService.preview, size: 28)
                                     Text("ORA is processing your meeting...")
                                         .font(LM.Fonts.text(12))
                                         .foregroundColor(LM.Colors.textSecondary)
