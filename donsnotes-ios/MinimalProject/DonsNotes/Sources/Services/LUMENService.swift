@@ -77,6 +77,22 @@ final class LUMENService: ObservableObject {
     // We track what index we last found a trigger at so we don't fire twice.
     private var lastTriggerSearchIndex: String.Index? = nil
 
+    // Silence-based endpointing for the question after "Lumen" trigger.
+    // Wait this long after the LAST transcript update before sending the question.
+    private let silenceWaitSeconds: Double = 1.2
+
+    // Minimum question length in characters before we'll even consider sending.
+    private let minQuestionChars: Int = 8
+
+    // Hard ceiling — if user has been talking continuously past this, just send.
+    private let maxQuestionSeconds: Double = 15.0
+
+    // Tracks the last time we saw a transcript update after the trigger fired.
+    private var lastQuestionUpdateAt: Date? = nil
+    private var pendingQuestion: String = ""
+    private var pendingContext: String = ""
+    private var silenceFireTask: Task<Void, Never>? = nil
+
     func processTranscript(_ text: String, fullContext: String) {
         guard !text.isEmpty else { return }
 
@@ -87,59 +103,107 @@ final class LUMENService: ObservableObject {
             guard text.count > wakeTranscriptLength else { return }
             let question = String(text.dropFirst(wakeTranscriptLength))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if question.count > 3 {
-                isAwake = false
-                triggerQuestion(question: question, context: fullContext)
+            if question.count >= minQuestionChars {
+                // Buffer + wait for silence instead of firing immediately.
+                bufferQuestionAndWaitForSilence(question: question, context: fullContext)
             }
             return
         }
 
-        // If already capturing a question after hey-lumen trigger, collect new words.
+        // If already capturing a question after the lumen trigger, keep buffering.
         if captureNextSentence {
-            // The question is everything after  "lumen" in the full transcript.
             if let range = lower.range(of: "lumen") {
-                let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if afterTrigger.count > 3 {
-                    captureNextSentence = false
-                    questionBuffer = ""
-                    triggerQuestion(question: afterTrigger, context: fullContext)
+                let afterTrigger = String(text[range.upperBound...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if afterTrigger.count >= minQuestionChars {
+                    bufferQuestionAndWaitForSilence(question: afterTrigger, context: fullContext)
                 }
             }
             return
         }
 
-        // Look for "lumen" anywhere in the transcript.
-        // Only fire if we haven't already fired on this exact trigger position.
+        // Look for "lumen" anywhere in the transcript. Only fire once per trigger.
         if lower.contains("lumen") {
-            // Make sure we haven't already handled this trigger.
             guard !alreadyTriggered else { return }
             alreadyTriggered = true
 
             Task { @MainActor in self.orbState = .triggered }
 
-            // Collect what comes after "lumen" as the question.
             if let range = lower.range(of: "lumen") {
-                let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if afterTrigger.count > 3 {
-                    triggerQuestion(question: afterTrigger, context: fullContext)
-                } else {
-                    // Question not in yet — wait for more transcript.
-                    captureNextSentence = true
-                    triggerDetectedAt = Date()
-                    questionBuffer = ""
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
-                        if self.captureNextSentence { self.orbState = .listening }
-                    }
+                let afterTrigger = String(text[range.upperBound...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Always start capture mode — never fire on the very first partial.
+                captureNextSentence = true
+                triggerDetectedAt = Date()
+                questionBuffer = ""
+
+                if afterTrigger.count >= minQuestionChars {
+                    bufferQuestionAndWaitForSilence(question: afterTrigger, context: fullContext)
+                }
+
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64(0.6 * 1_000_000_000))
+                    if self.captureNextSentence { self.orbState = .listening }
                 }
             }
         }
     }
 
-    // Abort question capture if nothing useful followed the trigger within 3s.
+    // Buffer the latest partial and (re)start a silence countdown.
+    // Each time a new partial arrives, we reset the timer.
+    // When the user actually stops talking for `silenceWaitSeconds`, we fire.
+    private func bufferQuestionAndWaitForSilence(question: String, context: String) {
+        pendingQuestion = question
+        pendingContext = context
+        lastQuestionUpdateAt = Date()
+
+        // Cancel any previously scheduled fire — we got a new word.
+        silenceFireTask?.cancel()
+        silenceFireTask = Task { [weak self] in
+            guard let self = self else { return }
+            try? await Task.sleep(nanoseconds: UInt64(self.silenceWaitSeconds * 1_000_000_000))
+            if Task.isCancelled { return }
+            await self.fireBufferedQuestionIfReady()
+        }
+    }
+
+    @MainActor
+    private func fireBufferedQuestionIfReady() async {
+        guard captureNextSentence || isAwake else { return }
+        guard !pendingQuestion.isEmpty else { return }
+
+        let q = pendingQuestion
+        let ctx = pendingContext
+
+        // Reset state BEFORE firing so a late partial doesn't double-send.
+        captureNextSentence = false
+        isAwake = false
+        pendingQuestion = ""
+        pendingContext = ""
+        questionBuffer = ""
+        triggerDetectedAt = nil
+        lastQuestionUpdateAt = nil
+
+        triggerQuestion(question: q, context: ctx)
+    }
+
+    // Abort question capture only if NOTHING was ever heard within 8s of the trigger.
     func checkTriggerTimeout() {
         guard captureNextSentence, let triggeredAt = triggerDetectedAt else { return }
-        if Date().timeIntervalSince(triggeredAt) > 3.0 &&
+
+        // Long ceiling — user is rambling, send what we have.
+        if let updated = lastQuestionUpdateAt,
+           Date().timeIntervalSince(triggeredAt) > maxQuestionSeconds,
+           !pendingQuestion.isEmpty {
+            silenceFireTask?.cancel()
+            Task { @MainActor in await fireBufferedQuestionIfReady() }
+            return
+        }
+
+        // True silence — they never said anything after "lumen". Bail.
+        if Date().timeIntervalSince(triggeredAt) > 8.0 &&
+            pendingQuestion.isEmpty &&
             questionBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             captureNextSentence = false
             questionBuffer = ""
