@@ -79,7 +79,7 @@ final class LUMENService: ObservableObject {
 
     // Silence-based endpointing for the question after "Lumen" trigger.
     // Wait this long after the LAST transcript update before sending the question.
-    private let silenceWaitSeconds: Double = 1.2
+    private let silenceWaitSeconds: Double = 2.5
 
     // Minimum question length in characters before we'll even consider sending.
     private let minQuestionChars: Int = 8
@@ -144,7 +144,7 @@ final class LUMENService: ObservableObject {
                     triggerDetectedAt = Date()
                     questionBuffer = ""
                     Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
+                        try? await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
                         if self.captureNextSentence { self.orbState = .listening }
                     }
                 }
