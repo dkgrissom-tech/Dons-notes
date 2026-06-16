@@ -267,7 +267,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
-                    Text("Say \"Lumen\" during the meeting to ask AI a question")
+                    Text("Say \"Ora\" during the meeting to ask AI a question")
                         .font(LM.Fonts.text(12))
                         .foregroundColor(LM.Colors.textTertiary)
                 }
@@ -426,6 +426,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
     // MARK: - Actions
     func startRecording() {
+        // Stop any active attendee voice inputs — they hold AVAudioSession
+        // and will crash SpeechRecognizerService.startListening() if still active.
+        voiceInput.stop()
+        emailVoiceInput.stop()
+        // Small delay to let AVAudioSession release before we claim it again.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self._startRecordingImpl()
+        }
+    }
+
+    func _startRecordingImpl() {
         lumen.reset()                       // clears word count, buffers, sets orbState=.idle
         lumen.orbState = .listening         // override immediately AFTER reset
         speechService.startListening()
