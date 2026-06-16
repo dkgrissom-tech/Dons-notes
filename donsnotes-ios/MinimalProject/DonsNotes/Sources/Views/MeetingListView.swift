@@ -12,9 +12,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     @State private var isShowingPricing = false
     @State private var isLoading = false
     @State private var searchText = ""
-    @State private var showOnboarding = false
 
-    private let hasSeenOnboardingKey = "lumen_onboarding_v1"
     private let hasSeenPricingKey = "has_seen_pricing_v2"
 
     var filteredMeetings: [Meeting] {
@@ -159,16 +157,10 @@ struct MeetingListView<T: APIServiceProtocol>: View {
             .sheet(isPresented: $isShowingPricing) {
                 PlansView()
             }
-            .fullScreenCover(isPresented: $showOnboarding) {
-                OnboardingView()
-            }
             .onAppear {
                 meetings = MeetingCacheService.shared.loadMeetings()
                 refresh()
-                if !UserDefaults.standard.bool(forKey: hasSeenOnboardingKey) {
-                    showOnboarding = true
-                    UserDefaults.standard.set(true, forKey: hasSeenOnboardingKey)
-                } else if !UserDefaults.standard.bool(forKey: hasSeenPricingKey) {
+                if !UserDefaults.standard.bool(forKey: hasSeenPricingKey) {
                     isShowingPricing = true
                     UserDefaults.standard.set(true, forKey: hasSeenPricingKey)
                 }
