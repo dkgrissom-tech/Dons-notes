@@ -3,7 +3,7 @@ import Foundation
 enum SubscriptionTier: String, CaseIterable, Identifiable {
     case free
     case pro
-    case lumenPro
+    case oraPro
     case lifetime
 
     var id: String { self.rawValue }
