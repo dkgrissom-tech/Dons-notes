@@ -7,7 +7,7 @@ struct PlansView: View {
     @Environment(\.dismiss) var dismiss
     // Pre-reveal bypass panel if owner mode is already active
     @State private var showOwnerBypass = UserDefaults.standard.bool(forKey: "is_owner_bypass")
-    @State private var selectedTier: SubscriptionTier = .lumenPro
+    @State private var selectedTier: SubscriptionTier = .oraPro
     @State private var showRestoreAlert = false
     @State private var restoreMessage = ""
 
@@ -132,7 +132,7 @@ struct PlansView: View {
                             ProgressView()
                                 .tint(.black)
                         } else {
-                            Text("Subscribe — \(subscriptionService.price(for: LUMENProductID.allCases.first(where: { $0.tier == selectedTier }) ?? .lumenPro))")
+                            Text("Subscribe — \(subscriptionService.price(for: LUMENProductID.allCases.first(where: { $0.tier == selectedTier }) ?? .oraPro))")
                                 .font(.system(size: 15, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.black)
                         }
@@ -336,7 +336,7 @@ struct LUMENPlanCard: View {
                 // CTA
                 HStack {
                     Spacer()
-                    Text(isCurrent ? "Current Plan" : (isHighlighted ? "Get Lumen Pro →" : "Select Plan →"))
+                    Text(isCurrent ? "Current Plan" : (isHighlighted ? "Get Ora Pro →" : "Select Plan →"))
                         .font(.system(size: 12, weight: .medium, design: .monospaced))
                         .foregroundColor(isCurrent ? LM.Colors.textGhost : (isHighlighted ? .black : LM.Colors.cyan))
                         .padding(.horizontal, 16)

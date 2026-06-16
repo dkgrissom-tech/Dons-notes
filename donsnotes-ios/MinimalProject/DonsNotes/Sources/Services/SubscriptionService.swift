@@ -5,13 +5,13 @@ import StoreKit
 // These must exactly match the In-App Purchase IDs created in App Store Connect
 enum LUMENProductID: String, CaseIterable {
     case pro        = "com.donsnotes.app.pro.monthly"
-    case lumenPro   = "com.donsnotes.app.lumenpro.monthly"
+    case oraPro   = "com.donsnotes.app.lumenpro.monthly"
     case lifetime   = "com.donsnotes.app.lifetime"
 
     var tier: SubscriptionTier {
         switch self {
         case .pro:      return .pro
-        case .lumenPro: return .lumenPro
+        case .oraPro: return .oraPro
         case .lifetime: return .lifetime
         }
     }
@@ -37,7 +37,7 @@ class SubscriptionService: ObservableObject {
         let ownerSaved = UserDefaults.standard.bool(forKey: ownerKey)
         if ownerSaved {
             isOwner = true
-            currentTier = .lumenPro
+            currentTier = .oraPro
         }
         transactionListenerTask = listenForTransactions()
         Task {
@@ -51,11 +51,11 @@ class SubscriptionService: ObservableObject {
     }
 
     // MARK: - Access guard (readable from any context — just a computed var on stored props)
-    var canUseLumenAI: Bool {
+    var canUseOraAI: Bool {
         // Also check UserDefaults directly as a safety net — isOwner should match
         // but a background Task race on init could cause a brief mismatch.
         let ownerSaved = UserDefaults.standard.bool(forKey: ownerKey)
-        return isOwner || ownerSaved || currentTier == .lumenPro || currentTier == .lifetime
+        return isOwner || ownerSaved || currentTier == .oraPro || currentTier == .lifetime
             || ReferralService.shared.hasReferralBonus
     }
 
@@ -176,7 +176,7 @@ class SubscriptionService: ObservableObject {
     func setOwnerBypass(_ enabled: Bool) {
         isOwner = enabled
         UserDefaults.standard.set(enabled, forKey: ownerKey)
-        currentTier = enabled ? .lumenPro : .free
+        currentTier = enabled ? .oraPro : .free
         if !enabled { Task { await refreshEntitlements() } }
     }
 
@@ -200,7 +200,7 @@ extension SubscriptionTier: Comparable {
         switch self {
         case .free:     return 0
         case .pro:      return 1
-        case .lumenPro: return 2
+        case .oraPro: return 2
         case .lifetime: return 3
         }
     }

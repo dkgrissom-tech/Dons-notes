@@ -45,7 +45,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                             if meeting.status.isProcessing {
                                 HStack(spacing: 8) {
                                     LUMENOrbView(state: .responding, speechService: SpeechRecognizerService(), size: 28)
-                                    Text("LUMEN is processing your meeting...")
+                                    Text("ORA is processing your meeting...")
                                         .font(LM.Fonts.text(12))
                                         .foregroundColor(LM.Colors.textSecondary)
                                 }
@@ -148,7 +148,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                         LUMENCard(borderColor: LM.Colors.borderCyan) {
                             VStack(alignment: .leading, spacing: 12) {
                                 HStack {
-                                    LUMENSectionHeader(title: "Ask LUMEN", icon: "bubble.left.and.bubble.right.fill")
+                                    LUMENSectionHeader(title: "Ask ORA", icon: "bubble.left.and.bubble.right.fill")
                                     Spacer()
                                     Button(action: { withAnimation { showChat.toggle() } }) {
                                         Image(systemName: showChat ? "chevron.up" : "chevron.down")
@@ -304,12 +304,12 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     }
 
     func exportMeeting() {
-        var t = "Meeting Notes — LUMEN\nDate: \(meeting.createdAt)\n\n"
+        var t = "Meeting Notes — ORA\nDate: \(meeting.createdAt)\n\n"
         if let org = meeting.organizerName { t += "Organizer: \(org)\n" }
         if !meeting.attendees.isEmpty { t += "Attendees: \(meeting.attendees.map { $0.name }.joined(separator: ", "))\n" }
         if let s = meeting.summary { t += "\nSUMMARY\n\(s)\n" }
         if let items = meeting.actionItems, !items.isEmpty { t += "\nACTION ITEMS\n"; for (i, item) in items.enumerated() { t += "\(i+1). \(item)\n" } }
-        if !lumenService.insights.isEmpty { t += "\nLUMEN INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
+        if !lumenService.insights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
         if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
         shareItems = [t]
         isShowingShareSheet = true
@@ -325,7 +325,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
             let context = meeting.transcript ?? meeting.summary ?? ""
             let answer = await lumenService.ask(question: q, context: context)
             await MainActor.run {
-                chatMessages.append((role: "lumen", text: answer))
+                chatMessages.append((role: "ora", text: answer))
                 isChatLoading = false
             }
         }

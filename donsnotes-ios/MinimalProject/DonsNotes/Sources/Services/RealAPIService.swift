@@ -8,7 +8,7 @@ class RealAPIService: ObservableObject, APIServiceProtocol {
         let sub = SubscriptionService.shared
         if sub.isOwner {
             request.setValue("true", forHTTPHeaderField: "X-Owner-Bypass")
-            request.setValue("lumenPro", forHTTPHeaderField: "X-Subscription-Tier")
+            request.setValue("oraPro", forHTTPHeaderField: "X-Subscription-Tier")
         } else {
             request.setValue(sub.currentTier.rawValue, forHTTPHeaderField: "X-Subscription-Tier")
         }

@@ -32,7 +32,7 @@ final class LUMENService: ObservableObject {
     @Published var isShowingPaywall: Bool = false  // triggers PlansView sheet when free user tries AI
 
     // Trigger detection
-    private let triggerWords = ["hey", "lumen"]
+    private let triggerWords = ["hey", "ora"]
 
     // SpeechRecognizerService delivers the FULL cumulative transcript on every update,
     // so we track how many words we've already scanned and only look at new ones.
@@ -71,7 +71,7 @@ final class LUMENService: ObservableObject {
 
     // MARK: - Transcript Processing
     //
-    // SIMPLE APPROACH: search the full lowercased transcript string for "lumen".
+    // SIMPLE APPROACH: search the full lowercased transcript string for "ora".
     // No word-splitting, no buffers, no punctuation stripping.
     // Works regardless of how Apple's speech engine formats the words.
     // We track what index we last found a trigger at so we don't fire twice.
@@ -96,8 +96,8 @@ final class LUMENService: ObservableObject {
 
         // If already capturing a question after hey-lumen trigger, collect new words.
         if captureNextSentence {
-            // The question is everything after  "lumen" in the full transcript.
-            if let range = lower.range(of: "lumen") {
+            // The question is everything after  "ora" in the full transcript.
+            if let range = lower.range(of: "ora") {
                 let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if afterTrigger.count > 3 {
                     captureNextSentence = false
@@ -108,17 +108,17 @@ final class LUMENService: ObservableObject {
             return
         }
 
-        // Look for "lumen" anywhere in the transcript.
+        // Look for "ora" anywhere in the transcript.
         // Only fire if we haven't already fired on this exact trigger position.
-        if lower.contains("lumen") {
+        if lower.contains("ora") {
             // Make sure we haven't already handled this trigger.
             guard !alreadyTriggered else { return }
             alreadyTriggered = true
 
             Task { @MainActor in self.orbState = .triggered }
 
-            // Collect what comes after "lumen" as the question.
-            if let range = lower.range(of: "lumen") {
+            // Collect what comes after "ora" as the question.
+            if let range = lower.range(of: "ora") {
                 let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
                 if afterTrigger.count > 3 {
                     triggerQuestion(question: afterTrigger, context: fullContext)
@@ -150,8 +150,8 @@ final class LUMENService: ObservableObject {
     // MARK: - Ask Claude
     func triggerQuestion(question: String, context: String) {
         guard !question.isEmpty else { return }
-        // Paywall: LUMEN AI requires Lumen Pro or Lifetime
-        guard SubscriptionService.shared.canUseLumenAI else {
+        // Paywall: LUMEN AI requires Ora Pro or Lifetime
+        guard SubscriptionService.shared.canUseOraAI else {
             Task { @MainActor in
                 self.orbState = .listening
                 self.isAwake = false
@@ -218,7 +218,7 @@ final class LUMENService: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(groqKey)", forHTTPHeaderField: "Authorization")
 
-        let systemPrompt = "You are LUMEN, an AI meeting assistant. Answer concisely in 2-3 sentences. Be direct and professional. Use the meeting transcript if provided, otherwise use general knowledge."
+        let systemPrompt = "You are ORA, an AI meeting assistant. Answer concisely in 2-3 sentences. Be direct and professional. Use the meeting transcript if provided, otherwise use general knowledge."
         let userMessage = context.isEmpty
             ? question
             : "Meeting transcript:\n\(context.prefix(3000))\n\nQuestion: \(question)"

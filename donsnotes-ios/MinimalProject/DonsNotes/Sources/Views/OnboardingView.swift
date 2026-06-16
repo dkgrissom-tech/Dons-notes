@@ -21,14 +21,14 @@ struct OnboardingView: View {
 
     private let pages: [OnboardingPage] = [
         OnboardingPage(
-            title: "Meet LUMEN",
+            title: "Meet ORA",
             subtitle: "Your AI meeting intelligence.\nAlways listening. Never missing a word.",
             icon: "circle.hexagongrid.fill",
             accentColor: LM.Colors.cyan
         ),
         OnboardingPage(
-            title: "just say Lumen",
-            subtitle: "Ask questions mid-meeting.\nLUMEN answers instantly — voice or silent.",
+            title: "just say Ora",
+            subtitle: "Ask questions mid-meeting.\nORA answers instantly — voice or silent.",
             icon: "waveform.badge.mic",
             accentColor: LM.Colors.cyan
         ),
@@ -156,7 +156,7 @@ struct OnboardingView: View {
                     // CTA button
                     Button(action: handleCTA) {
                         HStack(spacing: 10) {
-                            Text(currentPage == pages.count - 1 ? "Activate LUMEN" : "Continue")
+                            Text(currentPage == pages.count - 1 ? "Activate ORA" : "Continue")
                                 .font(.system(size: 16, weight: .semibold, design: .monospaced))
                                 .foregroundColor(.black)
 
@@ -200,7 +200,7 @@ struct OnboardingView: View {
                 HStack {
                     Spacer()
                     VStack(spacing: 2) {
-                        Text("LUMEN")
+                        Text("ORA")
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
                             .foregroundColor(LM.Colors.cyan)
                             .tracking(6)
@@ -253,7 +253,7 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .shadow(color: LM.Colors.cyan.opacity(0.4), radius: 8)
 
-            Text("Enter it below to get 30 days of Lumen Pro free.")
+            Text("Enter it below to get 30 days of Ora Pro free.")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundColor(LM.Colors.textSecondary)
                 .multilineTextAlignment(.center)
@@ -284,7 +284,7 @@ struct OnboardingView: View {
                     .foregroundColor(.red)
             }
             if referralApplySuccess {
-                Text("Bonus activated! 30 days of Lumen Pro unlocked.")
+                Text("Bonus activated! 30 days of Ora Pro unlocked.")
                     .font(.system(size: 13, design: .monospaced))
                     .foregroundColor(LM.Colors.cyan)
             }

@@ -59,7 +59,7 @@ struct ProfileView: View {
                         HStack {
                             Image(systemName: "checkmark.seal.fill")
                                 .foregroundColor(.cyan)
-                            Text("Referral bonus active — Lumen Pro free until \(expiry.formatted(date: .abbreviated, time: .omitted))")
+                            Text("Referral bonus active — Ora Pro free until \(expiry.formatted(date: .abbreviated, time: .omitted))")
                                 .foregroundColor(.cyan)
                                 .font(.footnote)
                         }
@@ -84,7 +84,7 @@ struct ProfileView: View {
                                     .foregroundColor(.red)
                             }
                             if referralApplySuccess {
-                                Text("Code applied! Enjoy 30 days of Lumen Pro.")
+                                Text("Code applied! Enjoy 30 days of Ora Pro.")
                                     .font(.caption)
                                     .foregroundColor(.green)
                             }
@@ -104,7 +104,7 @@ struct ProfileView: View {
                     HStack {
                         Text("Current Plan")
                         Spacer()
-                        Text(subscriptionService.isOwner ? "Lumen Pro (Dev)" : subscriptionService.currentTier.title)
+                        Text(subscriptionService.isOwner ? "Ora Pro (Dev)" : subscriptionService.currentTier.title)
                             .foregroundColor(subscriptionService.isOwner ? .cyan : .secondary)
                     }
 
@@ -115,7 +115,7 @@ struct ProfileView: View {
 
                 // MARK: - Developer Access
                 // Hidden section — tap the header 5 times to reveal the bypass toggle.
-                // Lets the owner test all Lumen Pro features without a real subscription.
+                // Lets the owner test all Ora Pro features without a real subscription.
                 Section(header:
                     Text(devTapCount >= 3 ? "Developer Access" : " ")
                         .onTapGesture {
@@ -130,7 +130,7 @@ struct ProfileView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Full Access Override")
                                     .font(.subheadline)
-                                Text("Unlocks all Lumen Pro features for testing")
+                                Text("Unlocks all Ora Pro features for testing")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }

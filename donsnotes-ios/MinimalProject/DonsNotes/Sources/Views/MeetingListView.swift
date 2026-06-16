@@ -116,7 +116,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                     }
                 }
             }
-            .navigationTitle("LUMEN")
+            .navigationTitle("ORA")
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {

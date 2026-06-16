@@ -331,7 +331,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 }
 
                 // Tap hint label
-                Text(lumen.isAwake ? "Listening for your question..." : "Tap orb to ask LUMEN")
+                Text(lumen.isAwake ? "Listening for your question..." : "Tap orb to ask ORA")
                     .font(LM.Fonts.mono(10, weight: .bold))
                     .foregroundColor(lumen.isAwake ? LM.Colors.green.opacity(0.9) : LM.Colors.textTertiary.opacity(0.6))
                     .tracking(1)

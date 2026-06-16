@@ -12,7 +12,7 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
         switch self {
         case .free:     return "Free"
         case .pro:      return "Pro"
-        case .lumenPro: return "Lumen Pro"
+        case .oraPro: return "Ora Pro"
         case .lifetime: return "Lifetime"
         }
     }
@@ -21,14 +21,14 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
         switch self {
         case .free:     return "$0"
         case .pro:      return "$12.99/mo"
-        case .lumenPro: return "$19.99/mo"
+        case .oraPro: return "$19.99/mo"
         case .lifetime: return "$149"
         }
     }
 
     var badge: String? {
         switch self {
-        case .lumenPro: return "POPULAR"
+        case .oraPro: return "POPULAR"
         case .lifetime: return "BEST VALUE"
         default:        return nil
         }
@@ -51,7 +51,7 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
                 "Cloud sync",
                 "Export (PDF, TXT)"
             ]
-        case .lumenPro:
+        case .oraPro:
             return [
                 "Everything in Pro",
                 "Lumen voice trigger",
@@ -74,6 +74,6 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
     }
 
     var isHighlighted: Bool {
-        self == .lumenPro
+        self == .oraPro
     }
 }

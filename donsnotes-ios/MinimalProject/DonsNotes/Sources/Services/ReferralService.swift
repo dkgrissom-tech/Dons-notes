@@ -3,7 +3,7 @@ import Foundation
 // MARK: - ReferralService
 // Simple referral code system — no backend required
 // Each user gets a unique 6-char code stored in UserDefaults
-// When a referred user enters a code at first launch, both get 30 free days of Lumen Pro
+// When a referred user enters a code at first launch, both get 30 free days of Ora Pro
 // "Free days" = stored in UserDefaults as referral_pro_expiry
 // SubscriptionService checks this date in canUseLumenAI
 
@@ -33,7 +33,7 @@ final class ReferralService {
     }
 
     // MARK: - Apply a Referral Code
-    /// Validates format, stores as applied_referral_code, grants 30 days of Lumen Pro.
+    /// Validates format, stores as applied_referral_code, grants 30 days of Ora Pro.
     /// Returns true if the code was valid and applied; false otherwise.
     @discardableResult
     func applyReferralCode(_ code: String) -> Bool {

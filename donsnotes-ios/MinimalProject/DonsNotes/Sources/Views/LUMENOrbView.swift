@@ -208,7 +208,7 @@ struct LUMENOrbView: View {
             // LUMEN label below sphere
             VStack {
                 Spacer().frame(height: size + 28)
-                Text("LUMEN")
+                Text("ORA")
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .foregroundColor(stateColor.opacity(0.7))
                     .tracking(3)
@@ -384,7 +384,7 @@ struct LUMENResponseOverlay: View {
             HStack {
                 Image(systemName: "sparkles")
                     .foregroundColor(LM.Colors.cyan)
-                Text("LUMEN")
+                Text("ORA")
                     .font(LM.Fonts.mono(11, weight: .bold))
                     .foregroundColor(LM.Colors.cyan)
                     .tracking(2)
