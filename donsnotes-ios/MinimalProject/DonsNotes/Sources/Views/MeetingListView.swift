@@ -161,8 +161,11 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                 meetings = MeetingCacheService.shared.loadMeetings()
                 refresh()
                 if !UserDefaults.standard.bool(forKey: hasSeenPricingKey) {
-                    isShowingPricing = true
                     UserDefaults.standard.set(true, forKey: hasSeenPricingKey)
+                    // Delay sheet presentation until view is fully settled in hierarchy
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        isShowingPricing = true
+                    }
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .startRecording)) { _ in

@@ -31,7 +31,7 @@ class SubscriptionService: ObservableObject {
     @Published var isLoadingProducts: Bool = true
 
     private let ownerKey = "is_owner_bypass"
-    private var transactionListenerTask: Task<Void, Error>?
+    private var transactionListenerTask: Task<Void, Never>?
 
     private init() {
         let ownerSaved = UserDefaults.standard.bool(forKey: ownerKey)
@@ -161,7 +161,7 @@ class SubscriptionService: ObservableObject {
     }
 
     // MARK: - Transaction Listener
-    private func listenForTransactions() -> Task<Void, Error> {
+    private func listenForTransactions() -> Task<Void, Never> {
         Task.detached { [weak self] in
             for await result in Transaction.updates {
                 guard let self else { return }
