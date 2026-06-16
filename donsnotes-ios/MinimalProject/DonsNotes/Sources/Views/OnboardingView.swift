@@ -339,7 +339,8 @@ struct OnboardingView: View {
             referralApplySuccess = true
             referralApplyError = false
             // Brief delay so user sees the confirmation, then complete onboarding
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_200_000_000) // 1.2s
                 completeOnboarding()
             }
         } else {
@@ -349,10 +350,19 @@ struct OnboardingView: View {
     }
 
     private func completeOnboarding() {
-        withAnimation(.easeOut(duration: 0.5)) {
+        // Stop all repeat-forever animations BEFORE removing the view.
+        // Leaving them running while SwiftUI destroys OnboardingView causes a crash.
+        orbPulse = false
+        orbGlow = false
+        particlesVisible = false
+        withAnimation(.easeOut(duration: 0.4)) {
             textOpacity = 0
+            ringOpacity = 0
+            logoOpacity = 0
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // Wait for fade, then flip the flag on main thread with no nested async.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
             hasSeenOnboarding = true
         }
     }
@@ -361,7 +371,8 @@ struct OnboardingView: View {
     private func startAnimations() {
         // Scanline
         scanlineOffset = -300
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 100_000_000)
             scanlineOffset = 800
         }
 
