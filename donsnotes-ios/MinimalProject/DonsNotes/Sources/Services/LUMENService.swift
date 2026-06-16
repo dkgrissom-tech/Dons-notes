@@ -77,6 +77,22 @@ final class LUMENService: ObservableObject {
     // We track what index we last found a trigger at so we don't fire twice.
     private var lastTriggerSearchIndex: String.Index? = nil
 
+    // Silence-based endpointing for the question after "Lumen" trigger.
+    // Wait this long after the LAST transcript update before sending the question.
+    private let silenceWaitSeconds: Double = 1.2
+
+    // Minimum question length in characters before we'll even consider sending.
+    private let minQuestionChars: Int = 8
+
+    // Hard ceiling — if user has been talking continuously past this, just send.
+    private let maxQuestionSeconds: Double = 15.0
+
+    // Tracks the last time we saw a transcript update after the trigger fired.
+    private var lastQuestionUpdateAt: Date? = nil
+    private var pendingQuestion: String = ""
+    private var pendingContext: String = ""
+    private var silenceFireTask: Task<Void, Never>? = nil
+
     func processTranscript(_ text: String, fullContext: String) {
         guard !text.isEmpty else { return }
 
@@ -87,14 +103,14 @@ final class LUMENService: ObservableObject {
             guard text.count > wakeTranscriptLength else { return }
             let question = String(text.dropFirst(wakeTranscriptLength))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if question.count > 3 {
-                isAwake = false
-                triggerQuestion(question: question, context: fullContext)
+            if question.count >= minQuestionChars {
+                // Buffer + wait for silence instead of firing immediately.
+                bufferQuestionAndWaitForSilence(question: question, context: fullContext)
             }
             return
         }
 
-        // If already capturing a question after hey-lumen trigger, collect new words.
+        // If already capturing a question after the lumen trigger, keep buffering.
         if captureNextSentence {
             // The question is everything after  "ora" in the full transcript.
             if let range = lower.range(of: "ora") {
@@ -136,10 +152,60 @@ final class LUMENService: ObservableObject {
         }
     }
 
-    // Abort question capture if nothing useful followed the trigger within 3s.
+    // Buffer the latest partial and (re)start a silence countdown.
+    // Each time a new partial arrives, we reset the timer.
+    // When the user actually stops talking for `silenceWaitSeconds`, we fire.
+    private func bufferQuestionAndWaitForSilence(question: String, context: String) {
+        pendingQuestion = question
+        pendingContext = context
+        lastQuestionUpdateAt = Date()
+
+        // Cancel any previously scheduled fire — we got a new word.
+        silenceFireTask?.cancel()
+        silenceFireTask = Task { [weak self] in
+            guard let self = self else { return }
+            try? await Task.sleep(nanoseconds: UInt64(self.silenceWaitSeconds * 1_000_000_000))
+            if Task.isCancelled { return }
+            await self.fireBufferedQuestionIfReady()
+        }
+    }
+
+    @MainActor
+    private func fireBufferedQuestionIfReady() async {
+        guard captureNextSentence || isAwake else { return }
+        guard !pendingQuestion.isEmpty else { return }
+
+        let q = pendingQuestion
+        let ctx = pendingContext
+
+        // Reset state BEFORE firing so a late partial doesn't double-send.
+        captureNextSentence = false
+        isAwake = false
+        pendingQuestion = ""
+        pendingContext = ""
+        questionBuffer = ""
+        triggerDetectedAt = nil
+        lastQuestionUpdateAt = nil
+
+        triggerQuestion(question: q, context: ctx)
+    }
+
+    // Abort question capture only if NOTHING was ever heard within 8s of the trigger.
     func checkTriggerTimeout() {
         guard captureNextSentence, let triggeredAt = triggerDetectedAt else { return }
-        if Date().timeIntervalSince(triggeredAt) > 3.0 &&
+
+        // Long ceiling — user is rambling, send what we have.
+        if let updated = lastQuestionUpdateAt,
+           Date().timeIntervalSince(triggeredAt) > maxQuestionSeconds,
+           !pendingQuestion.isEmpty {
+            silenceFireTask?.cancel()
+            Task { @MainActor in await fireBufferedQuestionIfReady() }
+            return
+        }
+
+        // True silence — they never said anything after "lumen". Bail.
+        if Date().timeIntervalSince(triggeredAt) > 8.0 &&
+            pendingQuestion.isEmpty &&
             questionBuffer.trimmingCharacters(in: .whitespaces).isEmpty {
             captureNextSentence = false
             questionBuffer = ""
