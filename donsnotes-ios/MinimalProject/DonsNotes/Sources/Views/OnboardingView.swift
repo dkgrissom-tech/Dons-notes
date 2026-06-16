@@ -68,7 +68,7 @@ struct OnboardingView: View {
                 .frame(height: 120)
                 .offset(y: scanlineOffset)
                 .ignoresSafeArea()
-                .animation(.linear(duration: 4).repeatForever(autoreverses: false), value: scanlineOffset)
+                .animation(.linear(duration: 4), value: scanlineOffset)
 
             VStack(spacing: 0) {
                 Spacer()
@@ -377,15 +377,12 @@ struct OnboardingView: View {
         }
 
         // Orb breathing
-        withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
-            orbPulse = true
-        }
-        withAnimation(.easeInOut(duration: 3.0).repeatForever(autoreverses: true)) {
-            orbGlow = true
-        }
+        // Orb breathing — simple alternating, no repeatForever (safe to cancel)
+        withAnimation(.easeInOut(duration: 2.5)) { orbPulse = true }
+        withAnimation(.easeInOut(duration: 3.0)) { orbGlow = true }
 
-        // Ping ring
-        withAnimation(.easeOut(duration: 2.0).repeatForever(autoreverses: false).delay(0.5)) {
+        // Ping ring — single pulse, no repeatForever
+        withAnimation(.easeOut(duration: 2.0).delay(0.5)) {
             ringScale = 1.8
             ringOpacity = 0
         }
