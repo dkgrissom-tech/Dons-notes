@@ -172,7 +172,6 @@ final class LUMENService: ObservableObject {
 
     @MainActor
     private func fireBufferedQuestionIfReady() async {
-        guard captureNextSentence || isAwake else { return }
         guard !pendingQuestion.isEmpty else { return }
 
         let q = pendingQuestion
@@ -225,6 +224,15 @@ final class LUMENService: ObservableObject {
             }
             return
         }
+
+        // Reset trigger state so Ora can be called again in the same session.
+        alreadyTriggered = false
+        captureNextSentence = false
+        isAwake = false
+        questionBuffer = ""
+        triggerDetectedAt = nil
+        lastQuestionUpdateAt = nil
+
         Task { @MainActor in
             self.isProcessing = true
             self.currentQuestion = question
@@ -376,7 +384,9 @@ final class LUMENService: ObservableObject {
     // isAwake is intentionally delayed 1.5s so the TTS audio ("Yes.") doesn't
     // bleed into the speech recogniser and get captured as the question.
     func orbTapped(currentTranscript: String) {
-        guard orbState == .listening else { return }  // only wake when idle-listening
+        // Allow tap when listening OR after a response finishes (responding/triggered).
+        // Only block if already awake waiting for a question.
+        guard !isAwake, !isProcessing else { return }
         orbState = .triggered
         speakWake()  // British guy says "Yes."
         // Delay activating question-capture until TTS has finished speaking (~1.5s)
