@@ -356,6 +356,22 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .frame(height: 52)
                 .padding(.top, LM.Space.sm)
 
+                // DEBUG LOG — remove before App Store submission
+                if !lumen.debugLog.isEmpty {
+                    ScrollView {
+                        Text(lumen.debugLog)
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(.yellow.opacity(0.85))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                    }
+                    .frame(height: 60)
+                    .background(Color.black.opacity(0.5))
+                    .cornerRadius(6)
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.top, 4)
+                }
+
                 Spacer()
 
                 if !attendees.isEmpty {

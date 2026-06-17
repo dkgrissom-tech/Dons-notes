@@ -30,6 +30,14 @@ final class LUMENService: ObservableObject {
     @Published var isProcessing: Bool = false
     @Published var isAwake: Bool = false     // true after orb tap, waiting for question
     @Published var isShowingPaywall: Bool = false  // triggers PlansView sheet when free user tries AI
+    @Published var debugLog: String = ""  // visible on screen during recording — remove before App Store
+
+    private func dbg(_ msg: String) {
+        let ts = String(format: "%.1f", Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 1000))
+        Task { @MainActor in
+            self.debugLog = "[\(ts)] \(msg)\n" + self.debugLog.components(separatedBy: "\n").prefix(6).joined(separator: "\n")
+        }
+    }
 
     // Trigger detection
     private let triggerWords = ["hey", "ora"]
@@ -149,14 +157,10 @@ final class LUMENService: ObservableObject {
         let afterTrigger = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
 
         if afterTrigger.count > 3 {
-            // Question was spoken in the same breath — send immediately via silence buffer.
+            dbg("ORA+Q(\(afterTrigger.count)ch): \(afterTrigger.prefix(25))")
             bufferQuestionAndWaitForSilence(question: afterTrigger, context: fullContext)
         } else {
-            // User paused after saying "Ora" — wait for the next transcript update.
-            // Use bufferQuestionAndWaitForSilence so the silence timer handles firing.
-            // On each new transcript update we'll fall into the guard-let above,
-            // find no new "ora" past lastTriggerCharIndex, and do nothing —
-            // UNLESS the user says "ora" again. So we need a separate accumulation path.
+            dbg("ORA alone -> captureNextSentence")
             captureNextSentence = true
             triggerDetectedAt = Date()
         }
@@ -257,6 +261,7 @@ final class LUMENService: ObservableObject {
         triggerDetectedAt = nil
         lastQuestionUpdateAt = nil
 
+        dbg("GROQ->: \(question.prefix(30))")
         Task { @MainActor in
             self.isProcessing = true
             self.currentQuestion = question

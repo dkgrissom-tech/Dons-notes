@@ -319,9 +319,11 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         ]
 
         if let url = components.url, UIApplication.shared.canOpenURL(url) {
-            UIApplication.shared.open(url)
-            isSendingEmail = false
-            emailSentConfirmation = true
+            Task { @MainActor in
+                UIApplication.shared.open(url)
+                isSendingEmail = false
+                emailSentConfirmation = true
+            }
             Task {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                 await MainActor.run { emailSentConfirmation = false }
