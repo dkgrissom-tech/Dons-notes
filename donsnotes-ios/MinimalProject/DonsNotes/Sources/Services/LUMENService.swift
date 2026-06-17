@@ -125,54 +125,52 @@ final class LUMENService: ObservableObject {
             return
         }
 
-        // If already capturing a question after the voice trigger, keep buffering.
-        // IMPORTANT: search from lastTriggerCharIndex, not from the beginning —
-        // lower.range(of: "ora") would always find the FIRST "ora" (the old one).
+        // If we already fired a trigger and are waiting for the question, accumulate it.
         if captureNextSentence {
-            let searchStart = lower.index(lower.startIndex, offsetBy: min(lastTriggerCharIndex, lower.count))
-            let searchSlice = String(lower[searchStart...])
-            // Everything after the trigger index is the question candidate.
-            let afterTrigger = searchSlice.trimmingCharacters(in: .whitespacesAndNewlines)
-            if afterTrigger.count > 3 {
-                captureNextSentence = false
-                questionBuffer = ""
-                // Map back to original text for correct capitalisation.
-                let origStart = text.index(text.startIndex, offsetBy: min(lastTriggerCharIndex, text.count))
-                let afterTriggerOriginal = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                triggerQuestion(question: afterTriggerOriginal, context: fullContext)
-            }
+            accumulatePostTriggerQuestion(text, fullContext: fullContext)
             return
         }
 
-        // Look for a NEW "ora" trigger — one that appears AFTER the last trigger we already handled.
-        // This prevents the cumulative transcript from re-firing on the same "ora" word.
+        // Look for a NEW "ora" trigger — one that appears AFTER the last trigger position.
+        // lastTriggerCharIndex advances each time so the cumulative transcript never re-fires.
         let searchStart = lower.index(lower.startIndex, offsetBy: min(lastTriggerCharIndex, lower.count))
         let searchSlice = lower[searchStart...]
 
-        if let range = searchSlice.range(of: "ora") {
-            // Found a new "ora" — record its end position so we won't fire on it again.
-            lastTriggerCharIndex = lower.distance(from: lower.startIndex, to: range.upperBound)
-            alreadyTriggered = true
+        guard let range = searchSlice.range(of: "ora") else { return }
 
-            Task { @MainActor in self.orbState = .triggered }
+        // Mark the end of this trigger so future calls skip past it.
+        let newTriggerEnd = lower.distance(from: lower.startIndex, to: range.upperBound)
+        lastTriggerCharIndex = newTriggerEnd
 
-            // Collect what comes after "ora" in the ORIGINAL (non-lowercased) text.
-            let originalSearchStart = text.index(text.startIndex, offsetBy: min(lastTriggerCharIndex, text.count))
-            // Re-find in original for correct capitalisation preservation, but we already know position.
-            let afterTriggerOriginal = String(text[originalSearchStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if afterTriggerOriginal.count > 3 {
-                triggerQuestion(question: afterTriggerOriginal, context: fullContext)
-            } else {
-                // Question not spoken yet — wait for more transcript.
-                captureNextSentence = true
-                triggerDetectedAt = Date()
-                questionBuffer = ""
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
-                    if self.captureNextSentence { self.orbState = .listening }
-                }
-            }
+        Task { @MainActor in self.orbState = .triggered }
+
+        // Everything after "ora" in the original text is the start of the question.
+        let origStart = text.index(text.startIndex, offsetBy: min(newTriggerEnd, text.count))
+        let afterTrigger = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if afterTrigger.count > 3 {
+            // Question was spoken in the same breath — send immediately via silence buffer.
+            bufferQuestionAndWaitForSilence(question: afterTrigger, context: fullContext)
+        } else {
+            // User paused after saying "Ora" — wait for the next transcript update.
+            // Use bufferQuestionAndWaitForSilence so the silence timer handles firing.
+            // On each new transcript update we'll fall into the guard-let above,
+            // find no new "ora" past lastTriggerCharIndex, and do nothing —
+            // UNLESS the user says "ora" again. So we need a separate accumulation path.
+            captureNextSentence = true
+            triggerDetectedAt = Date()
         }
+    }
+
+    // Called from the transcript observer when captureNextSentence is true.
+    // Accumulates everything spoken after the trigger and fires via silence buffer.
+    private func accumulatePostTriggerQuestion(_ text: String, fullContext: String) {
+        guard captureNextSentence else { return }
+        let origStart = text.index(text.startIndex, offsetBy: min(lastTriggerCharIndex, text.count))
+        let afterTrigger = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard afterTrigger.count > 3 else { return }
+        // Feed into silence buffer — it will fire after silenceWaitSeconds of quiet.
+        bufferQuestionAndWaitForSilence(question: afterTrigger, context: fullContext)
     }
 
     // Buffer the latest partial and (re)start a silence countdown.

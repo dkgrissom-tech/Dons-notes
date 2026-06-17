@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import MessageUI
+import UIKit
 
 struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State var meeting: Meeting
@@ -304,12 +305,37 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     }
 
     func sendEmail() {
-        guard MFMailComposeViewController.canSendMail() else {
-            // Device can't send mail (no account configured) — fall back to share sheet
-            exportMeeting()
+        let body = buildEmailBody()
+        let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
+        let recipients = meeting.attendees.map { $0.email }.joined(separator: ",")
+
+        // Try mailto: URL first — works with any mail app (Gmail, Outlook, Apple Mail)
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = recipients
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+
+        if let url = components.url, UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+            isSendingEmail = false
+            emailSentConfirmation = true
+            Task {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await MainActor.run { emailSentConfirmation = false }
+            }
             return
         }
-        isShowingMailCompose = true
+
+        // Fallback: MFMailComposeViewController
+        if MFMailComposeViewController.canSendMail() {
+            isShowingMailCompose = true
+        } else {
+            // Last resort: share sheet with pre-formatted text
+            exportMeeting()
+        }
     }
 
     func buildEmailBody() -> String {
