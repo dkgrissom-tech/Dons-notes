@@ -52,11 +52,10 @@ class SubscriptionService: ObservableObject {
 
     // MARK: - Access guard (readable from any context — just a computed var on stored props)
     var canUseOraAI: Bool {
-        // Also check UserDefaults directly as a safety net — isOwner should match
-        // but a background Task race on init could cause a brief mismatch.
-        let ownerSaved = UserDefaults.standard.bool(forKey: ownerKey)
-        return isOwner || ownerSaved || currentTier == .oraPro || currentTier == .lifetime
-            || ReferralService.shared.hasReferralBonus
+        // IAPs are not yet live in App Store Connect — grant everyone full access
+        // until subscriptions are created and ready to sell.
+        // TODO: Remove this line when IAPs go live.
+        return true
     }
 
     var canTranscribeMore: Bool { true }
