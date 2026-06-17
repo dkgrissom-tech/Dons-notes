@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import MessageUI
 
 struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State var meeting: Meeting
@@ -9,6 +10,8 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State private var emailSentConfirmation = false
     @State private var isShowingShareSheet = false
     @State private var shareItems: [Any] = []
+    @State private var isShowingMailCompose = false
+    @State private var mailComposeResult: Result<MFMailComposeResult, Error>? = nil
 
     // Audio
     @StateObject private var audioPlayer = MeetingAudioPlayer()
@@ -268,6 +271,22 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .preferredColorScheme(.dark)
         .sheet(isPresented: $isShowingShareSheet) { ShareSheet(items: shareItems) }
+        .sheet(isPresented: $isShowingMailCompose) {
+            MailComposeView(
+                recipients: meeting.attendees.map { $0.email },
+                subject: "Meeting Recap \u00b7 \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))",
+                body: buildEmailBody()
+            ) { result in
+                isShowingMailCompose = false
+                if case .success(let r) = result, r == .sent {
+                    emailSentConfirmation = true
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_500_000_000)
+                        await MainActor.run { emailSentConfirmation = false }
+                    }
+                }
+            }
+        }
         .onReceive(timer) { _ in if meeting.status.isProcessing { refreshMeeting() } }
         .onAppear {
             if let urlStr = meeting.audioUrl, let url = URL(string: urlStr) { audioPlayer.load(url: url) }
@@ -285,22 +304,32 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     }
 
     func sendEmail() {
-        isSendingEmail = true
-        Task {
-            do {
-                try await apiService.sendRecapEmail(id: meeting.id)
-                refreshMeeting()
-                await MainActor.run {
-                    isSendingEmail = false
-                    emailSentConfirmation = true
-                }
-                // Reset confirmation label after 2.5 seconds
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-                await MainActor.run { emailSentConfirmation = false }
-            } catch {
-                await MainActor.run { isSendingEmail = false }
-            }
+        guard MFMailComposeViewController.canSendMail() else {
+            // Device can't send mail (no account configured) — fall back to share sheet
+            exportMeeting()
+            return
         }
+        isShowingMailCompose = true
+    }
+
+    func buildEmailBody() -> String {
+        var t = "Meeting Recap — ORA\n"
+        t += "Date: \(meeting.createdAt.formatted(date: .long, time: .shortened))\n"
+        if let org = meeting.organizerName, !org.isEmpty { t += "Organizer: \(org)\n" }
+        t += "\n"
+        if let s = meeting.summary { t += "SUMMARY\n\(s)\n\n" }
+        if let items = meeting.actionItems, !items.isEmpty {
+            t += "ACTION ITEMS\n"
+            for (i, item) in items.enumerated() { t += "  \(i+1). \(item)\n" }
+            t += "\n"
+        }
+        if !lumenService.insights.isEmpty {
+            t += "ORA INSIGHTS\n"
+            for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" }
+        }
+        if let tr = meeting.transcript { t += "FULL TRANSCRIPT\n\(tr)\n" }
+        t += "\n— Sent via ORA · AI Meeting Intelligence"
+        return t
     }
 
     func exportMeeting() {
@@ -503,4 +532,37 @@ struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
     func updateUIViewController(_ u: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Mail Compose (native iOS mail, no backend needed)
+struct MailComposeView: UIViewControllerRepresentable {
+    let recipients: [String]
+    let subject: String
+    let body: String
+    let onFinish: (Result<MFMailComposeResult, Error>) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onFinish: onFinish) }
+
+    func makeUIViewController(context: Context) -> MFMailComposeViewController {
+        let vc = MFMailComposeViewController()
+        vc.mailComposeDelegate = context.coordinator
+        vc.setToRecipients(recipients)
+        vc.setSubject(subject)
+        vc.setMessageBody(body, isHTML: false)
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {}
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        let onFinish: (Result<MFMailComposeResult, Error>) -> Void
+        init(onFinish: @escaping (Result<MFMailComposeResult, Error>) -> Void) { self.onFinish = onFinish }
+        func mailComposeController(_ controller: MFMailComposeViewController,
+                                   didFinishWith result: MFMailComposeResult,
+                                   error: Error?) {
+            if let error = error { onFinish(.failure(error)) }
+            else { onFinish(.success(result)) }
+            controller.dismiss(animated: true)
+        }
+    }
 }

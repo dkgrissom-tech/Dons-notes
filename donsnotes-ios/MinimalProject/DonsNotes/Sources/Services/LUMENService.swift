@@ -125,16 +125,21 @@ final class LUMENService: ObservableObject {
             return
         }
 
-        // If already capturing a question after the lumen trigger, keep buffering.
+        // If already capturing a question after the voice trigger, keep buffering.
+        // IMPORTANT: search from lastTriggerCharIndex, not from the beginning —
+        // lower.range(of: "ora") would always find the FIRST "ora" (the old one).
         if captureNextSentence {
-            // The question is everything after  "ora" in the full transcript.
-            if let range = lower.range(of: "ora") {
-                let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if afterTrigger.count > 3 {
-                    captureNextSentence = false
-                    questionBuffer = ""
-                    triggerQuestion(question: afterTrigger, context: fullContext)
-                }
+            let searchStart = lower.index(lower.startIndex, offsetBy: min(lastTriggerCharIndex, lower.count))
+            let searchSlice = String(lower[searchStart...])
+            // Everything after the trigger index is the question candidate.
+            let afterTrigger = searchSlice.trimmingCharacters(in: .whitespacesAndNewlines)
+            if afterTrigger.count > 3 {
+                captureNextSentence = false
+                questionBuffer = ""
+                // Map back to original text for correct capitalisation.
+                let origStart = text.index(text.startIndex, offsetBy: min(lastTriggerCharIndex, text.count))
+                let afterTriggerOriginal = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                triggerQuestion(question: afterTriggerOriginal, context: fullContext)
             }
             return
         }
