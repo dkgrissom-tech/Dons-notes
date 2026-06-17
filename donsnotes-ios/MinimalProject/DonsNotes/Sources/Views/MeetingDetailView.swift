@@ -274,7 +274,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         .sheet(isPresented: $isShowingMailCompose) {
             MailComposeView(
                 recipients: meeting.attendees.map { $0.email },
-                subject: "Meeting Recap \u00b7 \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))",
+                subject: "Meeting Recap · \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))",
                 body: buildEmailBody()
             ) { result in
                 isShowingMailCompose = false
