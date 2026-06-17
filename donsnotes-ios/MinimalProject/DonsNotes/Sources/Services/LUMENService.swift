@@ -71,11 +71,10 @@ final class LUMENService: ObservableObject {
 
     // MARK: - Transcript Processing
     //
-    // SIMPLE APPROACH: search the full lowercased transcript string for "ora".
-    // No word-splitting, no buffers, no punctuation stripping.
-    // Works regardless of how Apple's speech engine formats the words.
-    // We track what index we last found a trigger at so we don't fire twice.
-    private var lastTriggerSearchIndex: String.Index? = nil
+    // Character offset of the END of the last "ora" match we already handled.
+    // We only look for new "ora" occurrences AFTER this position so the cumulative
+    // transcript can't re-fire the same trigger.
+    private var lastTriggerCharIndex: Int = 0
 
     // Silence-based endpointing for the question after "Lumen" trigger.
     // Wait this long after the LAST transcript update before sending the question.
@@ -124,29 +123,32 @@ final class LUMENService: ObservableObject {
             return
         }
 
-        // Look for "ora" anywhere in the transcript.
-        // Only fire if we haven't already fired on this exact trigger position.
-        if lower.contains("ora") {
-            // Make sure we haven't already handled this trigger.
-            guard !alreadyTriggered else { return }
+        // Look for a NEW "ora" trigger — one that appears AFTER the last trigger we already handled.
+        // This prevents the cumulative transcript from re-firing on the same "ora" word.
+        let searchStart = lower.index(lower.startIndex, offsetBy: min(lastTriggerCharIndex, lower.count))
+        let searchSlice = lower[searchStart...]
+
+        if let range = searchSlice.range(of: "ora") {
+            // Found a new "ora" — record its end position so we won't fire on it again.
+            lastTriggerCharIndex = lower.distance(from: lower.startIndex, to: range.upperBound)
             alreadyTriggered = true
 
             Task { @MainActor in self.orbState = .triggered }
 
-            // Collect what comes after "ora" as the question.
-            if let range = lower.range(of: "ora") {
-                let afterTrigger = String(text[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if afterTrigger.count > 3 {
-                    triggerQuestion(question: afterTrigger, context: fullContext)
-                } else {
-                    // Question not in yet — wait for more transcript.
-                    captureNextSentence = true
-                    triggerDetectedAt = Date()
-                    questionBuffer = ""
-                    Task { @MainActor in
-                        try? await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
-                        if self.captureNextSentence { self.orbState = .listening }
-                    }
+            // Collect what comes after "ora" in the ORIGINAL (non-lowercased) text.
+            let originalSearchStart = text.index(text.startIndex, offsetBy: min(lastTriggerCharIndex, text.count))
+            // Re-find in original for correct capitalisation preservation, but we already know position.
+            let afterTriggerOriginal = String(text[originalSearchStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if afterTriggerOriginal.count > 3 {
+                triggerQuestion(question: afterTriggerOriginal, context: fullContext)
+            } else {
+                // Question not spoken yet — wait for more transcript.
+                captureNextSentence = true
+                triggerDetectedAt = Date()
+                questionBuffer = ""
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: UInt64(2.0 * 1_000_000_000))
+                    if self.captureNextSentence { self.orbState = .listening }
                 }
             }
         }
@@ -226,6 +228,9 @@ final class LUMENService: ObservableObject {
         }
 
         // Reset trigger state so Ora can be called again in the same session.
+        // Note: lastTriggerCharIndex is intentionally NOT reset here — it marks how far
+        // into the cumulative transcript we've already processed, preventing the same
+        // "ora" word from re-firing after the response completes.
         alreadyTriggered = false
         captureNextSentence = false
         isAwake = false
@@ -280,7 +285,7 @@ final class LUMENService: ObservableObject {
         do {
             return try await askGroq(question: question, context: context)
         } catch {
-            return "Lumen couldn't respond (\(error.localizedDescription)). Check your connection."
+            return "Ora couldn't respond (\(error.localizedDescription)). Check your connection."
         }
     }
 
@@ -345,13 +350,27 @@ final class LUMENService: ObservableObject {
                 return
             }
 
-            // The recording session (SpeechRecognizerService) already owns .playAndRecord
-            // with .defaultToSpeaker, so we just play through it without reconfiguring the
-            // category — reconfiguring here would tear down the live recording tap.
+            // SpeechRecognizerService owns AVAudioSession in .record mode.
+            // We must override to .playAndRecord + .defaultToSpeaker so audio routes
+            // to the speaker instead of being silently discarded.
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord,
+                                    mode: .default,
+                                    options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+
             let player = try AVAudioPlayer(data: data)
             player.delegate = audioPlayerDelegate
             audioPlayerDelegate.onFinish = { [weak self] in
-                Task { @MainActor in self?.orbState = .listening }
+                Task { @MainActor in
+                    // Restore session back to record-only for the speech recogniser.
+                    try? AVAudioSession.sharedInstance().setCategory(
+                        .playAndRecord,
+                        mode: .measurement,
+                        options: [.defaultToSpeaker, .allowBluetooth]
+                    )
+                    self?.orbState = .listening
+                }
             }
             audioPlayer = player
             player.play()
@@ -408,6 +427,7 @@ final class LUMENService: ObservableObject {
         isAwake = false
         wakeTranscriptLength = 0
         lastProcessedWordCount = 0
+        lastTriggerCharIndex = 0
         captureNextSentence = false
         questionBuffer = ""
         tailBuffer = []
