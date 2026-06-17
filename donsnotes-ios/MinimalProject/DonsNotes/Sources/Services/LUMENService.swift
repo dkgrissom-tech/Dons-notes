@@ -97,13 +97,29 @@ final class LUMENService: ObservableObject {
 
         let lower = text.lowercased()
 
-        // TAP-TO-WAKE: if orb was tapped, collect everything spoken after the tap.
+        // TAP-TO-WAKE: if orb was tapped, collect everything spoken after the wake timestamp.
         if isAwake {
-            guard text.count > wakeTranscriptLength else { return }
-            let question = String(text.dropFirst(wakeTranscriptLength))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let wakeTime = wakeTimestamp,
+                  Date().timeIntervalSince(wakeTime) > 0 else { return }
+
+            // Strip the transcript content that existed at tap time.
+            // If the recognizer reset and the transcript is now SHORTER than our
+            // snapshot, the new content is entirely post-tap — use all of it.
+            let question: String
+            if text.count > wakeTranscriptSnapshot.count && text.hasPrefix(wakeTranscriptSnapshot) {
+                // Normal case: transcript grew past snapshot
+                question = String(text.dropFirst(wakeTranscriptSnapshot.count))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if text.count <= wakeTranscriptSnapshot.count {
+                // Recognizer reset — the whole new transcript is post-tap
+                question = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                // Transcript grew but doesn't share prefix — use everything after snapshot length
+                question = String(text.dropFirst(min(wakeTranscriptSnapshot.count, text.count)))
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
             if question.count >= minQuestionChars {
-                // Buffer + wait for silence instead of firing immediately.
                 bufferQuestionAndWaitForSilence(question: question, context: fullContext)
             }
             return
@@ -350,29 +366,17 @@ final class LUMENService: ObservableObject {
                 return
             }
 
-            // SpeechRecognizerService owns AVAudioSession in .record mode.
-            // We must override to .playAndRecord + .defaultToSpeaker so audio routes
-            // to the speaker instead of being silently discarded.
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord,
-                                    mode: .default,
-                                    options: [.defaultToSpeaker, .allowBluetooth])
-            try session.setActive(true)
-
+            // SpeechRecognizerService already owns AVAudioSession as .playAndRecord
+            // + .defaultToSpeaker — do NOT reconfigure it here. Calling setCategory
+            // mid-recognition tears down the engine tap and kills the transcript.
+            // AVAudioPlayer routes through the existing session automatically.
             let player = try AVAudioPlayer(data: data)
             player.delegate = audioPlayerDelegate
             audioPlayerDelegate.onFinish = { [weak self] in
-                Task { @MainActor in
-                    // Restore session back to record-only for the speech recogniser.
-                    try? AVAudioSession.sharedInstance().setCategory(
-                        .playAndRecord,
-                        mode: .measurement,
-                        options: [.defaultToSpeaker, .allowBluetooth]
-                    )
-                    self?.orbState = .listening
-                }
+                Task { @MainActor in self?.orbState = .listening }
             }
             audioPlayer = player
+            player.prepareToPlay()
             player.play()
         } catch {
             await MainActor.run { self.orbState = .listening }
@@ -412,20 +416,30 @@ final class LUMENService: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(1.5 * 1_000_000_000))
             guard let self = self else { return }
-            // Snapshot transcript length HERE so we only capture words spoken after the beep
-            self.wakeTranscriptLength = currentTranscript.count
+            // Snapshot the transcript TEXT (not just length) at this exact moment.
+            // This handles recognizer resets — if transcript shrinks post-tap we
+            // still know what was there before and treat everything new as the question.
+            self.wakeTranscriptSnapshot = currentTranscript
+            self.wakeTranscriptLength = currentTranscript.count  // kept for reset()
+            self.wakeTimestamp = Date()
             self.isAwake = true
             self.orbState = .listening
         }
     }
 
-    // Transcript length at the moment the orb was tapped — question is everything after.
-    private var wakeTranscriptLength: Int = 0
+    // Timestamp of when the orb was tapped — we ignore ANY transcript content
+    // that arrives before this moment, so TTS bleed and recognizer resets don't matter.
+    // We also track the transcript text that existed at tap time so we can strip it.
+    private var wakeTimestamp: Date? = nil
+    private var wakeTranscriptSnapshot: String = ""
+    private var wakeTranscriptLength: Int = 0  // kept for reset()
 
     func reset() {
         alreadyTriggered = false
         isAwake = false
         wakeTranscriptLength = 0
+        wakeTranscriptSnapshot = ""
+        wakeTimestamp = nil
         lastProcessedWordCount = 0
         lastTriggerCharIndex = 0
         captureNextSentence = false
