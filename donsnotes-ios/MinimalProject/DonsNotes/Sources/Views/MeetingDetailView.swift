@@ -255,10 +255,10 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                                 icon: isSendingEmail ? "paperplane.fill"
                                     : emailSentConfirmation ? "checkmark.circle.fill"
                                     : "envelope.fill",
-                                style: emailSentConfirmation ? .ghost : .primary,
+                                style: emailSentConfirmation ? .secondary : .primary,
                                 action: sendEmail
                             )
-                            .disabled(isSendingEmail || emailSentConfirmation)
+                            .disabled(isSendingEmail)
                         }
                     }
 

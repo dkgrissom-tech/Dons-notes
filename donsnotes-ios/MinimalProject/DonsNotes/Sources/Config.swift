@@ -20,7 +20,7 @@ enum Config {
            !id.isEmpty, !id.hasPrefix("$(") {
             return id
         }
-        return "onwK4e9ZLuTAKqWW03F9" // Daniel — British male broadcaster
+        return "pFZP5JQG7iQjIQuC4Bku" // Lily — British female
     }()
 
     // MARK: Groq (free tier — replaces Anthropic, zero cost per user)
