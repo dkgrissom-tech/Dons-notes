@@ -309,9 +309,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
         let recipients = meeting.attendees.map { $0.email }.joined(separator: ",")
 
-        // mailto: always works on iOS — skip canOpenURL (requires LSApplicationQueriesSchemes
-        // in Info.plist and returns false for Gmail/non-Apple-Mail users even when valid).
-        // Just open directly; iOS routes it to whatever mail app the user has set as default.
+        // Step 1: try mailto: — works with Apple Mail and Gmail as default app.
         var components = URLComponents()
         components.scheme = "mailto"
         components.path = recipients
@@ -323,19 +321,17 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         if let url = components.url {
             Task { @MainActor in
                 UIApplication.shared.open(url, options: [:]) { success in
-                    if success {
-                        self.emailSentConfirmation = true
-                        Task {
+                    Task { @MainActor in
+                        if success {
+                            // mailto: opened — mark as sent
+                            self.emailSentConfirmation = true
                             try? await Task.sleep(nanoseconds: 2_500_000_000)
-                            await MainActor.run { self.emailSentConfirmation = false }
-                        }
-                    } else {
-                        // mailto: open failed — fall back to native mail composer
-                        if MFMailComposeViewController.canSendMail() {
-                            self.isShowingMailCompose = true
+                            self.emailSentConfirmation = false
                         } else {
-                            // Last resort: share sheet with pre-formatted text
-                            self.exportMeeting()
+                            // mailto: failed (no mail app, or restricted) — show share sheet
+                            // Share sheet always works: shows Mail, Gmail, Messages, AirDrop, Copy
+                            self.shareItems = ["\(subject)\n\n\(body)"]
+                            self.isShowingShareSheet = true
                         }
                     }
                 }
@@ -343,8 +339,9 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
             return
         }
 
-        // URL construction failed — go straight to share sheet
-        exportMeeting()
+        // URL construction failed — share sheet fallback
+        shareItems = ["\(subject)\n\n\(body)"]
+        isShowingShareSheet = true
     }
 
     func buildEmailBody() -> String {
