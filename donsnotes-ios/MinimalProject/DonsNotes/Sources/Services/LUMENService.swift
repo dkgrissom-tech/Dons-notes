@@ -58,6 +58,7 @@ final class LUMENService: ObservableObject {
 
     // Audio synthesis (ElevenLabs)
     private var audioPlayer: AVAudioPlayer?
+    private var speakTask: Task<Void, Never>?   // tracks in-flight TTS so we can cancel it
     private let elevenLabsKey = Config.elevenLabsKey
     private let elevenLabsVoiceId = Config.elevenLabsVoiceId
 
@@ -304,9 +305,11 @@ final class LUMENService: ObservableObject {
                     let insight = LUMENInsight(question: question, answer: answer)
                     self.insights.insert(insight, at: 0)
                     if self.isVoiceEnabled {
-                        // Say "I'm on it." then read the answer
-                        Task {
+                        // Run as a stored task so stopSpeaking() can cancel it
+                        self.speakTask?.cancel()
+                        self.speakTask = Task {
                             await self.speak(text: "I'm on it.")
+                            guard !Task.isCancelled else { return }
                             await self.speak(text: answer)
                         }
                     } else {
@@ -421,6 +424,8 @@ final class LUMENService: ObservableObject {
 
     // Call this to immediately cut off Ora mid-speech
     func stopSpeaking() {
+        speakTask?.cancel()
+        speakTask = nil
         audioPlayer?.stop()
         audioPlayer = nil
         Task { @MainActor in self.orbState = .listening }
@@ -448,9 +453,8 @@ final class LUMENService: ObservableObject {
     // isAwake is intentionally delayed 1.5s so the TTS audio ("Yes.") doesn't
     // bleed into the speech recogniser and get captured as the question.
     func orbTapped(currentTranscript: String) {
-        // Allow tap when listening OR after a response finishes (responding/triggered).
-        // Only block if already awake waiting for a question.
-        guard !isAwake, !isProcessing else { return }
+        // Block if already awake, processing, or currently speaking (prevents repeat/glitch)
+        guard !isAwake, !isProcessing, orbState != .responding else { return }
         orbState = .triggered
         speakWake()  // British guy says "Yes."
         // Delay activating question-capture until TTS has finished speaking (~1.5s)
