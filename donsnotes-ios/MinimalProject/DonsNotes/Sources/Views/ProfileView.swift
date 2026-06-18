@@ -113,9 +113,8 @@ struct ProfileView: View {
                     }
                 }
 
-                // MARK: - Developer Access
-                // Hidden section — tap the header 5 times to reveal the bypass toggle.
-                // Lets the owner test all Ora Pro features without a real subscription.
+#if DEBUG
+                // MARK: - Developer Access (DEBUG only — not visible in App Store builds)
                 Section(header:
                     Text(devTapCount >= 3 ? "Developer Access" : " ")
                         .onTapGesture {
@@ -138,6 +137,7 @@ struct ProfileView: View {
                         .tint(.cyan)
                     }
                 }
+#endif
 
                 Section {
                     Button("Save") {

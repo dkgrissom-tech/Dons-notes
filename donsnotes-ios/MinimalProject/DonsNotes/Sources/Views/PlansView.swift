@@ -5,8 +5,10 @@ import StoreKit
 struct PlansView: View {
     @ObservedObject var subscriptionService = SubscriptionService.shared
     @Environment(\.dismiss) var dismiss
-    // Pre-reveal bypass panel if owner mode is already active
+#if DEBUG
+    // Pre-reveal bypass panel if owner mode is already active (DEBUG only)
     @State private var showOwnerBypass = UserDefaults.standard.bool(forKey: "is_owner_bypass")
+#endif
     @State private var selectedTier: SubscriptionTier = .oraPro
     @State private var showRestoreAlert = false
     @State private var restoreMessage = ""
@@ -192,9 +194,10 @@ struct PlansView: View {
         .padding(.horizontal, 20)
     }
 
-    // MARK: - Owner
+    // MARK: - Owner (DEBUG builds only)
     @ViewBuilder
     private var ownerSection: some View {
+#if DEBUG
         if showOwnerBypass {
             VStack(spacing: 0) {
                 ScanLineDivider()
@@ -228,6 +231,9 @@ struct PlansView: View {
                 .padding(.horizontal, 20)
             }
         }
+#else
+        EmptyView()
+#endif
     }
 
     // MARK: - Footer
@@ -241,9 +247,11 @@ struct PlansView: View {
                 .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity)
+#if DEBUG
         .onLongPressGesture(minimumDuration: 1.5) {
             withAnimation { showOwnerBypass.toggle() }
         }
+#endif
     }
 }
 
