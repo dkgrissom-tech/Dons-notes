@@ -508,12 +508,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
             let attendeesCopy = await MainActor.run { attendees }
             let organizer = await MainActor.run { profileService.userName }
 
+            // Strip Ora trigger exchanges from transcript before summarizing.
+            // speechService.transcript contains everything the mic heard including
+            // "aura aura aura..." triggers and Lily's spoken responses picked up by mic.
+            let cleanTranscript = cleanMeetingTranscript(transcript, insights: insights)
+
             // Ask Groq for a structured summary + action items if we have transcript
             var summary: String? = nil
             var actionItems: [String]? = nil
 
-            if !transcript.isEmpty {
-                if let result = try? await summarizeWithGroq(transcript: transcript) {
+            if !cleanTranscript.isEmpty {
+                if let result = try? await summarizeWithGroq(transcript: cleanTranscript) {
                     summary = result.summary
                     actionItems = result.actionItems.isEmpty ? nil : result.actionItems
                 }
@@ -528,7 +533,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 id: UUID(),
                 status: .completed,
                 audioUrl: url.absoluteString,
-                transcript: transcript.isEmpty ? nil : transcript,
+                transcript: cleanTranscript.isEmpty ? nil : cleanTranscript,
                 summary: summary,
                 attendees: attendeesCopy,
                 organizerName: organizer.isEmpty ? nil : organizer,
@@ -551,6 +556,43 @@ struct RecordingView<T: APIServiceProtocol>: View {
         let actionItems: [String]
     }
 
+    // Removes Ora trigger words ("ora", "aura" repeated), questions the user asked Ora,
+    // and Lily's spoken answers that were picked up by the mic, leaving clean meeting dialogue.
+    func cleanMeetingTranscript(_ raw: String, insights: [LUMENInsight]) -> String {
+        var text = raw
+
+        // 1. Remove repeated trigger sequences: "ora ora ora", "aura aura aura" etc.
+        let triggerPattern = try? NSRegularExpression(
+            pattern: "\\b((?:ora|aura)[,.]?\\s*){2,}",
+            options: [.caseInsensitive]
+        )
+        let range = NSRange(text.startIndex..., in: text)
+        text = triggerPattern?.stringByReplacingMatches(in: text, range: range, withTemplate: "") ?? text
+
+        // 2. Remove each insight question from transcript (they appear verbatim as spoken)
+        for insight in insights {
+            let q = NSRegularExpression.escapedPattern(for: insight.question.trimmingCharacters(in: .whitespaces))
+            if let re = try? NSRegularExpression(pattern: q, options: [.caseInsensitive]) {
+                let r = NSRange(text.startIndex..., in: text)
+                text = re.stringByReplacingMatches(in: text, range: r, withTemplate: "")
+            }
+            // Also remove the answer (Lily's voice picked up by mic — first 12 words)
+            let answerWords = insight.answer.split(separator: " ").prefix(12).joined(separator: " ")
+            if answerWords.count > 8, let re = try? NSRegularExpression(
+                pattern: NSRegularExpression.escapedPattern(for: answerWords),
+                options: [.caseInsensitive]
+            ) {
+                let r = NSRange(text.startIndex..., in: text)
+                text = re.stringByReplacingMatches(in: text, range: r, withTemplate: "")
+            }
+        }
+
+        // 3. Collapse multiple spaces/newlines
+        text = text.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text
+    }
+
     func summarizeWithGroq(transcript: String) async throws -> SummaryResult {
         let url = URL(string: "https://api.groq.com/openai/v1/chat/completions")!
         var request = URLRequest(url: url)
@@ -559,14 +601,16 @@ struct RecordingView<T: APIServiceProtocol>: View {
         request.setValue("Bearer \(Config.groqKey)", forHTTPHeaderField: "Authorization")
 
         let prompt = """
-        Summarize this meeting transcript in 3-5 sentences. Then list up to 5 action items.
-        
-        Respond in this exact format:
+        You are summarizing a business meeting transcript. The transcript may contain speech recognition artifacts. Ignore any fragments that look like AI assistant commands or responses. Focus only on the human meeting conversation.
+
+        Write a 3-5 sentence summary of the main topics discussed, then list up to 5 concrete action items.
+
+        Respond in this EXACT format (no other text):
         SUMMARY: <your summary here>
         ACTION ITEMS:
         - <item 1>
         - <item 2>
-        
+
         Transcript:
         \(transcript.prefix(4000))
         """
