@@ -113,10 +113,17 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                     }
                 }
             }
-            .navigationTitle("ORA")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text("O  R  A")
+                        .font(.system(size: 20, weight: .thin, design: .default))
+                        .tracking(8)
+                        .foregroundColor(.white)
+                        .kerning(0)
+                }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 10) {
                         Button(action: { isShowingProfile = true }) {
