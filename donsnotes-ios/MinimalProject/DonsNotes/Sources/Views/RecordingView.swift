@@ -331,11 +331,31 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 }
 
                 // Tap hint label
-                Text(lumen.isAwake ? "Listening for your question..." : "Tap orb to ask ORA")
+                Text(lumen.isAwake ? "Listening for your question..." : lumen.orbState == .responding ? "ORA is speaking..." : "Tap orb to ask ORA")
                     .font(LM.Fonts.mono(10, weight: .bold))
-                    .foregroundColor(lumen.isAwake ? LM.Colors.green.opacity(0.9) : LM.Colors.textTertiary.opacity(0.6))
+                    .foregroundColor(lumen.isAwake ? LM.Colors.green.opacity(0.9) : lumen.orbState == .responding ? LM.Colors.cyan.opacity(0.9) : LM.Colors.textTertiary.opacity(0.6))
                     .tracking(1)
                     .padding(.top, 4)
+
+                // Stop button — visible only while Ora is speaking
+                if lumen.orbState == .responding {
+                    Button(action: { lumen.stopSpeaking() }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "stop.fill")
+                                .font(LM.Fonts.text(11))
+                            Text("STOP")
+                                .font(LM.Fonts.mono(11, weight: .bold))
+                                .tracking(2)
+                        }
+                        .foregroundColor(LM.Colors.red)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(LM.Colors.red.opacity(0.12))
+                        .cornerRadius(LM.Radius.pill)
+                        .overlay(RoundedRectangle(cornerRadius: LM.Radius.pill).stroke(LM.Colors.red.opacity(0.4), lineWidth: 1))
+                    }
+                    .padding(.top, 8)
+                }
 
                 LUMENWaveformView(speechService: speechService)
                     .padding(.horizontal, LM.Space.xl)

@@ -346,14 +346,14 @@ final class LUMENService: ObservableObject {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(groqKey)", forHTTPHeaderField: "Authorization")
 
-        let systemPrompt = "You are ORA, an AI meeting assistant. Answer concisely in 2-3 sentences. Be direct and professional. Use the meeting transcript if provided, otherwise use general knowledge."
+        let systemPrompt = "You are ORA, an AI meeting assistant. Answer in ONE sentence, 20 words max. Be direct. No filler phrases."
         let userMessage = context.isEmpty
             ? question
             : "Meeting transcript:\n\(context.prefix(3000))\n\nQuestion: \(question)"
 
         let body: [String: Any] = [
             "model": groqModel,
-            "max_tokens": 300,
+            "max_tokens": 80,
             "messages": [
                 ["role": "system", "content": systemPrompt],
                 ["role": "user", "content": userMessage]
@@ -418,6 +418,13 @@ final class LUMENService: ObservableObject {
     }
 
     private lazy var audioPlayerDelegate: AudioPlayerEndDelegate = AudioPlayerEndDelegate()
+
+    // Call this to immediately cut off Ora mid-speech
+    func stopSpeaking() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        Task { @MainActor in self.orbState = .listening }
+    }
 
     // Quick spoken acknowledgement when the trigger fires, before the answer is ready.
     // Called immediately when user taps the orb to wake LUMEN.
