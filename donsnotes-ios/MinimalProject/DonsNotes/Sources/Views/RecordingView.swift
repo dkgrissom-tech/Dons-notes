@@ -511,9 +511,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
         }
         var presenter = root
         while let p = presenter.presentedViewController, !p.isBeingDismissed { presenter = p }
-        vc.completionWithItemsHandler = { [weak self] _, _, _, _ in
-            // Dismiss the recording view after share sheet closes
-            DispatchQueue.main.async { self?.dismiss() }
+        // Capture dismiss as a local closure — RecordingView is a struct, no weak needed
+        let dismissAction = dismiss
+        vc.completionWithItemsHandler = { _, _, _, _ in
+            DispatchQueue.main.async { dismissAction() }
         }
         presenter.present(vc, animated: true)
     }
