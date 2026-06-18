@@ -146,7 +146,8 @@ final class LUMENService: ObservableObject {
         let sliceOffset = lower.distance(from: lower.startIndex, to: searchStart)
         let searchSlice = String(lower[searchStart...])
 
-        guard let range = searchSlice.range(of: #"(?<![a-z])ora(?![a-z])"#, options: .regularExpression) else { return }
+        // "aura" is how Apple Speech consistently mishears "Ora" — treat it as a trigger alias.
+        guard let range = searchSlice.range(of: #"(?<![a-z])(?:ora|aura)(?![a-z])"#, options: .regularExpression) else { return }
 
         // Mark the end of this trigger so future calls skip past it.
         let rangeEndInSlice = searchSlice.distance(from: searchSlice.startIndex, to: range.upperBound)
@@ -179,7 +180,7 @@ final class LUMENService: ObservableObject {
         // Strip leading misheard trigger noise (e.g. "aura", "a aura", "hora").
         // The recogniser sometimes transcribes "Ora" as these variants — drop them
         // so Groq gets a clean question without the garbled prefix.
-        let noisePrefixes = ["ora", "aura", "hora", "o ra", "orah", "orra", "a aura", "the ora"]
+        let noisePrefixes = ["ora", "aura", "aura aura", "aura aura aura", "hora", "o ra", "orah", "orra", "a aura", "the ora"]
         let lowerAfter = afterTrigger.lowercased()
         for noise in noisePrefixes {
             if lowerAfter.hasPrefix(noise) {
