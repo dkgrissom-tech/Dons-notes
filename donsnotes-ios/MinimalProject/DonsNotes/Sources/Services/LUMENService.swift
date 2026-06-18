@@ -141,13 +141,16 @@ final class LUMENService: ObservableObject {
 
         // Look for a NEW "ora" trigger — one that appears AFTER the last trigger position.
         // lastTriggerCharIndex advances each time so the cumulative transcript never re-fires.
+        // Word-boundary regex prevents "aura", "flora", "aurora" from false-triggering.
         let searchStart = lower.index(lower.startIndex, offsetBy: min(lastTriggerCharIndex, lower.count))
-        let searchSlice = lower[searchStart...]
+        let sliceOffset = lower.distance(from: lower.startIndex, to: searchStart)
+        let searchSlice = String(lower[searchStart...])
 
-        guard let range = searchSlice.range(of: "ora") else { return }
+        guard let range = searchSlice.range(of: #"(?<![a-z])ora(?![a-z])"#, options: .regularExpression) else { return }
 
         // Mark the end of this trigger so future calls skip past it.
-        let newTriggerEnd = lower.distance(from: lower.startIndex, to: range.upperBound)
+        let rangeEndInSlice = searchSlice.distance(from: searchSlice.startIndex, to: range.upperBound)
+        let newTriggerEnd = sliceOffset + rangeEndInSlice
         lastTriggerCharIndex = newTriggerEnd
 
         Task { @MainActor in self.orbState = .triggered }
@@ -171,7 +174,28 @@ final class LUMENService: ObservableObject {
     private func accumulatePostTriggerQuestion(_ text: String, fullContext: String) {
         guard captureNextSentence else { return }
         let origStart = text.index(text.startIndex, offsetBy: min(lastTriggerCharIndex, text.count))
-        let afterTrigger = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var afterTrigger = String(text[origStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Strip leading misheard trigger noise (e.g. "aura", "a aura", "hora").
+        // The recogniser sometimes transcribes "Ora" as these variants — drop them
+        // so Groq gets a clean question without the garbled prefix.
+        let noisePrefixes = ["ora", "aura", "hora", "o ra", "orah", "orra", "a aura", "the ora"]
+        let lowerAfter = afterTrigger.lowercased()
+        for noise in noisePrefixes {
+            if lowerAfter.hasPrefix(noise) {
+                // If there is a sentence boundary after the noise, start fresh there.
+                if let dotRange = afterTrigger.range(of: #"[.!?]\s+"#, options: .regularExpression) {
+                    afterTrigger = String(afterTrigger[dotRange.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    // No boundary — just drop the noise word itself.
+                    let wordEnd = afterTrigger.index(afterTrigger.startIndex, offsetBy: min(noise.count, afterTrigger.count))
+                    afterTrigger = String(afterTrigger[wordEnd...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                dbg("noise stripped: \(noise)")
+                break
+            }
+        }
+
         guard afterTrigger.count > 3 else { return }
         // Feed into silence buffer — it will fire after silenceWaitSeconds of quiet.
         bufferQuestionAndWaitForSilence(question: afterTrigger, context: fullContext)
