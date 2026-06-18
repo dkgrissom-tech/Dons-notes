@@ -495,6 +495,29 @@ struct RecordingView<T: APIServiceProtocol>: View {
         newAttendeeName = ""
     }
 
+    func presentRecapSheet(text: String) {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let window = scene.windows.first(where: { $0.isKeyWindow }),
+              let root = window.rootViewController else {
+            dismiss(); return
+        }
+        let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let pop = vc.popoverPresentationController {
+            pop.sourceView = window
+            pop.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 1, height: 1)
+            pop.permittedArrowDirections = []
+        }
+        var presenter = root
+        while let p = presenter.presentedViewController, !p.isBeingDismissed { presenter = p }
+        vc.completionWithItemsHandler = { [weak self] _, _, _, _ in
+            // Dismiss the recording view after share sheet closes
+            DispatchQueue.main.async { self?.dismiss() }
+        }
+        presenter.present(vc, animated: true)
+    }
+
     func toggleAttendee(_ contact: Attendee) {
         if let i = attendees.firstIndex(where: { $0.email == contact.email }) { attendees.remove(at: i) }
         else { attendees.append(contact) }
@@ -556,7 +579,32 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 saved.insert(meeting, at: 0)
                 MeetingCacheService.shared.saveMeetings(saved)
                 isUploading = false
-                dismiss()
+
+                // Present share sheet BEFORE dismissing — once dismiss() fires the view
+                // is gone and no sheet can present from it.
+                if !attendeesCopy.isEmpty || summary != nil {
+                    let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
+                    var body = "Meeting Recap — ORA\n"
+                    body += "Date: \(meeting.createdAt.formatted(date: .long, time: .shortened))\n"
+                    if let org = meeting.organizerName, !org.isEmpty { body += "Organizer: \(org)\n" }
+                    if !attendeesCopy.isEmpty { body += "Attendees: \(attendeesCopy.map { $0.name }.joined(separator: ", "))\n" }
+                    body += "\n"
+                    if let s = summary { body += "SUMMARY\n\(s)\n\n" }
+                    if let items = actionItems, !items.isEmpty {
+                        body += "ACTION ITEMS\n"
+                        for (i, item) in items.enumerated() { body += "  \(i+1). \(item)\n" }
+                        body += "\n"
+                    }
+                    if let ins = meeting.insights, !ins.isEmpty {
+                        body += "ORA INSIGHTS\n"
+                        for i in ins { body += "Q: \(i.question)\nA: \(i.answer)\n\n" }
+                    }
+                    if !cleanTranscript.isEmpty { body += "FULL TRANSCRIPT\n\(cleanTranscript)\n" }
+                    body += "\n— Sent via ORA · AI Meeting Intelligence"
+                    presentRecapSheet(text: "\(subject)\n\n\(body)")
+                } else {
+                    dismiss()
+                }
             }
         }
     }
