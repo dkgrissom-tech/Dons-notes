@@ -309,7 +309,9 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
         let recipients = meeting.attendees.map { $0.email }.joined(separator: ",")
 
-        // Try mailto: URL first — works with any mail app (Gmail, Outlook, Apple Mail)
+        // mailto: always works on iOS — skip canOpenURL (requires LSApplicationQueriesSchemes
+        // in Info.plist and returns false for Gmail/non-Apple-Mail users even when valid).
+        // Just open directly; iOS routes it to whatever mail app the user has set as default.
         var components = URLComponents()
         components.scheme = "mailto"
         components.path = recipients
@@ -318,26 +320,31 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
             URLQueryItem(name: "body", value: body)
         ]
 
-        if let url = components.url, UIApplication.shared.canOpenURL(url) {
+        if let url = components.url {
             Task { @MainActor in
-                UIApplication.shared.open(url)
-                isSendingEmail = false
-                emailSentConfirmation = true
-            }
-            Task {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
-                await MainActor.run { emailSentConfirmation = false }
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if success {
+                        self.emailSentConfirmation = true
+                        Task {
+                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                            await MainActor.run { self.emailSentConfirmation = false }
+                        }
+                    } else {
+                        // mailto: open failed — fall back to native mail composer
+                        if MFMailComposeViewController.canSendMail() {
+                            self.isShowingMailCompose = true
+                        } else {
+                            // Last resort: share sheet with pre-formatted text
+                            self.exportMeeting()
+                        }
+                    }
+                }
             }
             return
         }
 
-        // Fallback: MFMailComposeViewController
-        if MFMailComposeViewController.canSendMail() {
-            isShowingMailCompose = true
-        } else {
-            // Last resort: share sheet with pre-formatted text
-            exportMeeting()
-        }
+        // URL construction failed — go straight to share sheet
+        exportMeeting()
     }
 
     func buildEmailBody() -> String {
