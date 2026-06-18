@@ -305,41 +305,10 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     }
 
     func sendEmail() {
-        let body = buildEmailBody()
+        // Show iOS share sheet — works with Mail, Gmail, Messages, AirDrop, Copy on every device.
+        // No mailto: threading, no callback complexity, no crash.
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
-        let recipients = meeting.attendees.map { $0.email }.joined(separator: ",")
-
-        // Step 1: try mailto: — works with Apple Mail and Gmail as default app.
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = recipients
-        components.queryItems = [
-            URLQueryItem(name: "subject", value: subject),
-            URLQueryItem(name: "body", value: body)
-        ]
-
-        if let url = components.url {
-            Task { @MainActor in
-                UIApplication.shared.open(url, options: [:]) { success in
-                    Task { @MainActor in
-                        if success {
-                            // mailto: opened — mark as sent
-                            self.emailSentConfirmation = true
-                            try? await Task.sleep(nanoseconds: 2_500_000_000)
-                            self.emailSentConfirmation = false
-                        } else {
-                            // mailto: failed (no mail app, or restricted) — show share sheet
-                            // Share sheet always works: shows Mail, Gmail, Messages, AirDrop, Copy
-                            self.shareItems = ["\(subject)\n\n\(body)"]
-                            self.isShowingShareSheet = true
-                        }
-                    }
-                }
-            }
-            return
-        }
-
-        // URL construction failed — share sheet fallback
+        let body = buildEmailBody()
         shareItems = ["\(subject)\n\n\(body)"]
         isShowingShareSheet = true
     }
