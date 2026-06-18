@@ -45,6 +45,7 @@ struct Meeting: Codable, Identifiable {
     let organizerName: String?
     let createdAt: Date
     let actionItems: [String]?
+    let insights: [LUMENInsight]?
     
     var durationFormatted: String {
         return ""
@@ -60,10 +61,11 @@ struct Meeting: Codable, Identifiable {
         case organizerName = "organizer_name"
         case createdAt = "created_at"
         case actionItems = "action_items"
+        case insights
     }
     
     // Memberwise init for use in tests/mocks and local construction
-    init(id: UUID, status: MeetingStatus, audioUrl: String?, transcript: String?, summary: String?, attendees: [Attendee], organizerName: String?, createdAt: Date, actionItems: [String]? = nil) {
+    init(id: UUID, status: MeetingStatus, audioUrl: String?, transcript: String?, summary: String?, attendees: [Attendee], organizerName: String?, createdAt: Date, actionItems: [String]? = nil, insights: [LUMENInsight]? = nil) {
         self.id = id
         self.status = status
         self.audioUrl = audioUrl
@@ -73,6 +75,7 @@ struct Meeting: Codable, Identifiable {
         self.organizerName = organizerName
         self.createdAt = createdAt
         self.actionItems = actionItems
+        self.insights = insights
     }
     
     init(from decoder: Decoder) throws {
@@ -86,6 +89,7 @@ struct Meeting: Codable, Identifiable {
         organizerName = try container.decodeIfPresent(String.self, forKey: .organizerName)
         createdAt = (try? container.decode(Date.self, forKey: .createdAt)) ?? Date()
         actionItems = try container.decodeIfPresent([String].self, forKey: .actionItems)
+        insights = try container.decodeIfPresent([LUMENInsight].self, forKey: .insights)
     }
     
     func encode(to encoder: Encoder) throws {
@@ -99,5 +103,6 @@ struct Meeting: Codable, Identifiable {
         try container.encodeIfPresent(organizerName, forKey: .organizerName)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encodeIfPresent(actionItems, forKey: .actionItems)
+        try container.encodeIfPresent(insights, forKey: .insights)
     }
 }

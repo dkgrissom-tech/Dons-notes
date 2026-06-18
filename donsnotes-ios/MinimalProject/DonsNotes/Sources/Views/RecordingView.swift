@@ -533,7 +533,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 attendees: attendeesCopy,
                 organizerName: organizer.isEmpty ? nil : organizer,
                 createdAt: Date(),
-                actionItems: actionItems
+                actionItems: actionItems,
+                insights: insights.isEmpty ? nil : insights
             )
             await MainActor.run {
                 var saved = MeetingCacheService.shared.loadMeetings()

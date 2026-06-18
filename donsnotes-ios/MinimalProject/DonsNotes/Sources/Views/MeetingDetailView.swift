@@ -329,9 +329,9 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
             for (i, item) in items.enumerated() { t += "  \(i+1). \(item)\n" }
             t += "\n"
         }
-        if !lumenService.insights.isEmpty {
+        if let storedInsights = meeting.insights, !storedInsights.isEmpty {
             t += "ORA INSIGHTS\n"
-            for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" }
+            for ins in storedInsights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" }
         }
         if let tr = meeting.transcript { t += "FULL TRANSCRIPT\n\(tr)\n" }
         t += "\n— Sent via ORA · AI Meeting Intelligence"
@@ -344,7 +344,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         if !meeting.attendees.isEmpty { t += "Attendees: \(meeting.attendees.map { $0.name }.joined(separator: ", "))\n" }
         if let s = meeting.summary { t += "\nSUMMARY\n\(s)\n" }
         if let items = meeting.actionItems, !items.isEmpty { t += "\nACTION ITEMS\n"; for (i, item) in items.enumerated() { t += "\(i+1). \(item)\n" } }
-        if !lumenService.insights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
+        if let storedInsights = meeting.insights, !storedInsights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in storedInsights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
         if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
         presentShareSheet(items: [t])
     }
