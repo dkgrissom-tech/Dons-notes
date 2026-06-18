@@ -58,7 +58,7 @@ enum SubscriptionTier: String, CaseIterable, Identifiable {
                 "Live Q&A during meetings",
                 "Voice responses (ElevenLabs)",
                 "Post-meeting AI chat",
-                "LUMEN Insights panel",
+                "Ora Insights panel",
                 "Calendar integration",
                 "Boardroom silent mode"
             ]

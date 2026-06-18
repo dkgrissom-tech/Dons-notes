@@ -85,7 +85,7 @@ final class LUMENService: ObservableObject {
     // transcript can't re-fire the same trigger.
     private var lastTriggerCharIndex: Int = 0
 
-    // Silence-based endpointing for the question after "Lumen" trigger.
+    // Silence-based endpointing for the question after "Ora" trigger.
     // Wait this long after the LAST transcript update before sending the question.
     private let silenceWaitSeconds: Double = 2.5
 
@@ -266,7 +266,7 @@ final class LUMENService: ObservableObject {
     // MARK: - Ask Claude
     func triggerQuestion(question: String, context: String) {
         guard !question.isEmpty else { return }
-        // Paywall: LUMEN AI requires Ora Pro or Lifetime
+        // Paywall: Ora AI requires Ora Pro or Lifetime
         guard SubscriptionService.shared.canUseOraAI else {
             Task { @MainActor in
                 self.orbState = .listening

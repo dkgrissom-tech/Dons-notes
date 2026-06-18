@@ -103,7 +103,7 @@ struct PlansView: View {
             }
             .padding(.top, 24)
 
-            Text("LUMEN PLANS")
+            Text("ORA PLANS")
                 .font(.system(size: 24, weight: .thin, design: .monospaced))
                 .foregroundColor(.white)
                 .shadow(color: LM.Colors.cyan.opacity(0.4), radius: 8)

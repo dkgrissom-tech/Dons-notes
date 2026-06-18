@@ -116,7 +116,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                     if !lumenService.insights.isEmpty {
                         LUMENCard(borderColor: LM.Colors.purple.opacity(0.3), glowColor: LM.Colors.purple) {
                             VStack(alignment: .leading, spacing: 12) {
-                                LUMENSectionHeader(title: "LUMEN Insights", icon: "sparkles", color: LM.Colors.purple)
+                                LUMENSectionHeader(title: "Ora Insights", icon: "sparkles", color: LM.Colors.purple)
                                 VStack(spacing: 10) {
                                     ForEach(lumenService.insights) { insight in
                                         VStack(alignment: .leading, spacing: 6) {
