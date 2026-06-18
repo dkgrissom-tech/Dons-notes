@@ -583,7 +583,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
                 // Present share sheet BEFORE dismissing — once dismiss() fires the view
                 // is gone and no sheet can present from it.
-                if !attendeesCopy.isEmpty || summary != nil {
+                if !cleanTranscript.isEmpty || summary != nil || !attendeesCopy.isEmpty {
                     let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
                     var body = "Meeting Recap — ORA\n"
                     body += "Date: \(meeting.createdAt.formatted(date: .long, time: .shortened))\n"
@@ -613,43 +613,6 @@ struct RecordingView<T: APIServiceProtocol>: View {
     struct SummaryResult {
         let summary: String
         let actionItems: [String]
-    }
-
-    // Removes Ora trigger words ("ora", "aura" repeated), questions the user asked Ora,
-    // and Lily's spoken answers that were picked up by the mic, leaving clean meeting dialogue.
-    func cleanMeetingTranscript(_ raw: String, insights: [LUMENInsight]) -> String {
-        var text = raw
-
-        // 1. Remove repeated trigger sequences: "ora ora ora", "aura aura aura" etc.
-        let triggerPattern = try? NSRegularExpression(
-            pattern: "\\b((?:ora|aura)[,.]?\\s*){2,}",
-            options: [.caseInsensitive]
-        )
-        let range = NSRange(text.startIndex..., in: text)
-        text = triggerPattern?.stringByReplacingMatches(in: text, range: range, withTemplate: "") ?? text
-
-        // 2. Remove each insight question from transcript (they appear verbatim as spoken)
-        for insight in insights {
-            let q = NSRegularExpression.escapedPattern(for: insight.question.trimmingCharacters(in: .whitespaces))
-            if let re = try? NSRegularExpression(pattern: q, options: [.caseInsensitive]) {
-                let r = NSRange(text.startIndex..., in: text)
-                text = re.stringByReplacingMatches(in: text, range: r, withTemplate: "")
-            }
-            // Also remove the answer (Lily's voice picked up by mic — first 12 words)
-            let answerWords = insight.answer.split(separator: " ").prefix(12).joined(separator: " ")
-            if answerWords.count > 8, let re = try? NSRegularExpression(
-                pattern: NSRegularExpression.escapedPattern(for: answerWords),
-                options: [.caseInsensitive]
-            ) {
-                let r = NSRange(text.startIndex..., in: text)
-                text = re.stringByReplacingMatches(in: text, range: r, withTemplate: "")
-            }
-        }
-
-        // 3. Collapse multiple spaces/newlines
-        text = text.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
-        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text
     }
 
     func summarizeWithGroq(transcript: String) async throws -> SummaryResult {
