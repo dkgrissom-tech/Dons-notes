@@ -296,19 +296,26 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     }
 
     func presentShareSheet(items: [Any]) {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let root = scene.windows.first?.rootViewController else { return }
-        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        // iPad needs a source rect
-        if let pop = vc.popoverPresentationController {
-            pop.sourceView = root.view
-            pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 0, height: 0)
-            pop.permittedArrowDirections = []
+        DispatchQueue.main.async {
+            // Use keyWindow for iOS 15+ (windows.first is deprecated and returns nil on some devices)
+            guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive }),
+                  let window = scene.windows.first(where: { $0.isKeyWindow }),
+                  let root = window.rootViewController else { return }
+
+            let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+            // iPad popover source
+            if let pop = vc.popoverPresentationController {
+                pop.sourceView = window
+                pop.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 1, height: 1)
+                pop.permittedArrowDirections = []
+            }
+            // Walk to topmost non-SwiftUI presenter
+            var presenter = root
+            while let p = presenter.presentedViewController, !p.isBeingDismissed { presenter = p }
+            presenter.present(vc, animated: true)
         }
-        // Find the topmost presented view controller
-        var presenter = root
-        while let p = presenter.presentedViewController { presenter = p }
-        presenter.present(vc, animated: true)
     }
 
     func buildEmailBody() -> String {

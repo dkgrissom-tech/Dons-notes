@@ -501,30 +501,102 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 
     func uploadMeeting(url: URL) {
-        // api.donsnotes.com is offline — save meeting locally so the list and email work.
         isUploading = true
-        Task { @MainActor in
-            // Build a Meeting from what we already have in memory.
-            let transcript = speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Build a quick summary from Ora Q&A insights if available.
-            let summary: String? = lumen.insights.isEmpty ? nil :
-                lumen.insights.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
+        Task {
+            let transcript = await MainActor.run { speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let insights = await MainActor.run { lumen.insights }
+            let attendeesCopy = await MainActor.run { attendees }
+            let organizer = await MainActor.run { profileService.userName }
+
+            // Ask Groq for a structured summary + action items if we have transcript
+            var summary: String? = nil
+            var actionItems: [String]? = nil
+
+            if !transcript.isEmpty {
+                if let result = try? await summarizeWithGroq(transcript: transcript) {
+                    summary = result.summary
+                    actionItems = result.actionItems.isEmpty ? nil : result.actionItems
+                }
+            }
+
+            // Fall back to Ora Q&A insights if Groq summary failed
+            if summary == nil && !insights.isEmpty {
+                summary = insights.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
+            }
+
             let meeting = Meeting(
                 id: UUID(),
                 status: .completed,
                 audioUrl: url.absoluteString,
                 transcript: transcript.isEmpty ? nil : transcript,
                 summary: summary,
-                attendees: attendees,
-                organizerName: profileService.userName.isEmpty ? nil : profileService.userName,
-                createdAt: Date()
+                attendees: attendeesCopy,
+                organizerName: organizer.isEmpty ? nil : organizer,
+                createdAt: Date(),
+                actionItems: actionItems
             )
-            var saved = MeetingCacheService.shared.loadMeetings()
-            saved.insert(meeting, at: 0)
-            MeetingCacheService.shared.saveMeetings(saved)
-            isUploading = false
-            dismiss()
+            await MainActor.run {
+                var saved = MeetingCacheService.shared.loadMeetings()
+                saved.insert(meeting, at: 0)
+                MeetingCacheService.shared.saveMeetings(saved)
+                isUploading = false
+                dismiss()
+            }
         }
+    }
+
+    struct SummaryResult {
+        let summary: String
+        let actionItems: [String]
+    }
+
+    func summarizeWithGroq(transcript: String) async throws -> SummaryResult {
+        let url = URL(string: "https://api.groq.com/openai/v1/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(Config.groqKey)", forHTTPHeaderField: "Authorization")
+
+        let prompt = """
+        Summarize this meeting transcript in 3-5 sentences. Then list up to 5 action items.
+        
+        Respond in this exact format:
+        SUMMARY: <your summary here>
+        ACTION ITEMS:
+        - <item 1>
+        - <item 2>
+        
+        Transcript:
+        \(transcript.prefix(4000))
+        """
+
+        let body: [String: Any] = [
+            "model": Config.groqModel,
+            "max_tokens": 400,
+            "messages": [["role": "user", "content": prompt]]
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let content = (json?["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any]
+        let text = (content?["content"] as? String) ?? ""
+
+        // Parse summary
+        var summaryText = ""
+        var items: [String] = []
+        let lines = text.components(separatedBy: "\n")
+        var inActions = false
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("SUMMARY:") {
+                summaryText = String(trimmed.dropFirst(8)).trimmingCharacters(in: .whitespaces)
+            } else if trimmed.hasPrefix("ACTION ITEMS:") {
+                inActions = true
+            } else if inActions && trimmed.hasPrefix("- ") {
+                items.append(String(trimmed.dropFirst(2)))
+            }
+        }
+        return SummaryResult(summary: summaryText.isEmpty ? text : summaryText, actionItems: items)
     }
 }
 
