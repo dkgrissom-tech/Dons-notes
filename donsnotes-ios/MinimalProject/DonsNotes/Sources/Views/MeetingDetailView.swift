@@ -3,16 +3,19 @@ import AVFoundation
 import MessageUI
 import UIKit
 
+enum MeetingActiveSheet: Identifiable {
+    case share, mailCompose
+    var id: Self { self }
+}
+
 struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State var meeting: Meeting
     @ObservedObject var apiService: T
     @State private var timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     @State private var isSendingEmail = false
     @State private var emailSentConfirmation = false
-    @State private var isShowingShareSheet = false
+    @State private var activeSheet: MeetingActiveSheet? = nil
     @State private var shareItems: [Any] = []
-    @State private var isShowingMailCompose = false
-    @State private var mailComposeResult: Result<MFMailComposeResult, Error>? = nil
 
     // Audio
     @StateObject private var audioPlayer = MeetingAudioPlayer()
@@ -271,19 +274,23 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $isShowingShareSheet) { ShareSheet(items: shareItems) }
-        .sheet(isPresented: $isShowingMailCompose) {
-            MailComposeView(
-                recipients: meeting.attendees.map { $0.email },
-                subject: "Meeting Recap · \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))",
-                body: buildEmailBody()
-            ) { result in
-                isShowingMailCompose = false
-                if case .success(let r) = result, r == .sent {
-                    emailSentConfirmation = true
-                    Task {
-                        try? await Task.sleep(nanoseconds: 2_500_000_000)
-                        await MainActor.run { emailSentConfirmation = false }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .share:
+                ShareSheet(items: shareItems)
+            case .mailCompose:
+                MailComposeView(
+                    recipients: meeting.attendees.map { $0.email },
+                    subject: "Meeting Recap · \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))",
+                    body: buildEmailBody()
+                ) { result in
+                    activeSheet = nil
+                    if case .success(let r) = result, r == .sent {
+                        emailSentConfirmation = true
+                        Task {
+                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                            await MainActor.run { emailSentConfirmation = false }
+                        }
                     }
                 }
             }
@@ -305,12 +312,10 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     }
 
     func sendEmail() {
-        // Show iOS share sheet — works with Mail, Gmail, Messages, AirDrop, Copy on every device.
-        // No mailto: threading, no callback complexity, no crash.
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
         let body = buildEmailBody()
         shareItems = ["\(subject)\n\n\(body)"]
-        isShowingShareSheet = true
+        activeSheet = .share
     }
 
     func buildEmailBody() -> String {
@@ -342,7 +347,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         if !lumenService.insights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
         if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
         shareItems = [t]
-        isShowingShareSheet = true
+        activeSheet = .share
     }
 
     func sendChatMessage() {

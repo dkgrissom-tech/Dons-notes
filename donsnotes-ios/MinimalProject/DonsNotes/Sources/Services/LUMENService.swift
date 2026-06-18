@@ -310,7 +310,14 @@ final class LUMENService: ObservableObject {
                         self.speakTask = Task {
                             await self.speak(text: "I'm on it.")
                             guard !Task.isCancelled else { return }
+                            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s gap
+                            guard !Task.isCancelled else { return }
                             await self.speak(text: answer)
+                            // Guarantee clean state so next "Ora" trigger is always heard
+                            await MainActor.run {
+                                self.orbState = .listening
+                                self.isProcessing = false
+                            }
                         }
                     } else {
                         // No speech — return to listening shortly.
