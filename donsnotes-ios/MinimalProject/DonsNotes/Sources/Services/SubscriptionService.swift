@@ -20,7 +20,7 @@ enum LUMENProductID: String, CaseIterable {
 // MARK: - SubscriptionService (StoreKit 2)
 // Not @MainActor — keeps it readable from nonisolated contexts (e.g. LUMENService).
 // All @Published mutations happen on the main thread via DispatchQueue.main.async.
-class SubscriptionService: ObservableObject {
+class SubscriptionService: ObservableObject, @unchecked Sendable {
     static let shared = SubscriptionService()
 
     @Published var currentTier: SubscriptionTier = .free
