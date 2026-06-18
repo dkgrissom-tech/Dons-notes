@@ -27,6 +27,9 @@ final class LUMENService: ObservableObject {
     @Published var currentAnswer: String = ""
     @Published var isShowingResponse: Bool = false
     @Published var insights: [LUMENInsight] = []
+    // Meeting-only transcript: human conversation text, Ora triggers/answers stripped out.
+    // Built in real time as transcript grows. Use this for email summary, not speechService.transcript.
+    @Published var meetingTranscript: String = ""
     @Published var isProcessing: Bool = false
     @Published var isAwake: Bool = false     // true after orb tap, waiting for question
     @Published var isShowingPaywall: Bool = false  // triggers PlansView sheet when free user tries AI
@@ -50,6 +53,11 @@ final class LUMENService: ObservableObject {
     // Cross-chunk lookback: keep the last word from the previous scan so a trigger split
     // as "...hey" then "lumen..." across two updates is still detected.
     private var tailBuffer: [String] = []
+
+    // Tracks end position of last Ora exchange in cumulative transcript — used to build meetingTranscript
+    var lastOraExchangeEndIndex: Int = 0  // internal — used by RecordingView to capture tail text
+    // Tracks the start of the current Ora trigger in the raw transcript
+    private var currentTriggerStartIndex: Int = 0
 
     // Question capture after the trigger fires.
     private var captureNextSentence: Bool = false
@@ -153,6 +161,20 @@ final class LUMENService: ObservableObject {
         // Mark the end of this trigger so future calls skip past it.
         let rangeEndInSlice = searchSlice.distance(from: searchSlice.startIndex, to: range.upperBound)
         let newTriggerEnd = sliceOffset + rangeEndInSlice
+
+        // Capture meeting text BEFORE this trigger as clean human conversation
+        let triggerStartInFull = sliceOffset + searchSlice.distance(from: searchSlice.startIndex, to: range.lowerBound)
+        currentTriggerStartIndex = triggerStartInFull
+        if triggerStartInFull > lastOraExchangeEndIndex {
+            let meetingChunk = String(text[text.index(text.startIndex, offsetBy: min(lastOraExchangeEndIndex, text.count))..<text.index(text.startIndex, offsetBy: min(triggerStartInFull, text.count))])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !meetingChunk.isEmpty {
+                Task { @MainActor in
+                    if !self.meetingTranscript.isEmpty { self.meetingTranscript += " " }
+                    self.meetingTranscript += meetingChunk
+                }
+            }
+        }
         lastTriggerCharIndex = newTriggerEnd
 
         Task { @MainActor in self.orbState = .triggered }
@@ -317,6 +339,9 @@ final class LUMENService: ObservableObject {
                             await MainActor.run {
                                 self.orbState = .listening
                                 self.isProcessing = false
+                                // Record where the Ora exchange ended in the raw transcript
+                                // so next meeting text segment starts after this point
+                                self.lastOraExchangeEndIndex = self.lastTriggerCharIndex
                             }
                         }
                     } else {

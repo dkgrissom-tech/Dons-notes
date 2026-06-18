@@ -503,15 +503,25 @@ struct RecordingView<T: APIServiceProtocol>: View {
     func uploadMeeting(url: URL) {
         isUploading = true
         Task {
-            let transcript = await MainActor.run { speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines) }
+            // Use lumen.meetingTranscript (human-only text, Ora exchanges stripped in real time)
+            // Append any remaining text after the last Ora exchange too
+            let rawFull = await MainActor.run { speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let meetingOnly = await MainActor.run { lumen.meetingTranscript.trimmingCharacters(in: .whitespacesAndNewlines) }
+            // Append any tail text after last Ora exchange
+            let lastEnd = await MainActor.run { lumen.lastOraExchangeEndIndex }
+            let tailText: String
+            if lastEnd < rawFull.count {
+                let idx = rawFull.index(rawFull.startIndex, offsetBy: min(lastEnd, rawFull.count))
+                tailText = String(rawFull[idx...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else { tailText = "" }
+            let transcript = meetingOnly.isEmpty ? rawFull :
+                (tailText.isEmpty ? meetingOnly : meetingOnly + " " + tailText)
             let insights = await MainActor.run { lumen.insights }
             let attendeesCopy = await MainActor.run { attendees }
             let organizer = await MainActor.run { profileService.userName }
 
-            // Strip Ora trigger exchanges from transcript before summarizing.
-            // speechService.transcript contains everything the mic heard including
-            // "aura aura aura..." triggers and Lily's spoken responses picked up by mic.
-            let cleanTranscript = cleanMeetingTranscript(transcript, insights: insights)
+            // transcript is already clean (meetingTranscript strips Ora exchanges in real time)
+            let cleanTranscript = transcript
 
             // Ask Groq for a structured summary + action items if we have transcript
             var summary: String? = nil
