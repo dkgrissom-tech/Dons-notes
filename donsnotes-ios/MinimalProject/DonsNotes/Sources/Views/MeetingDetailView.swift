@@ -315,7 +315,10 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
         let body = buildEmailBody()
         shareItems = ["\(subject)\n\n\(body)"]
-        activeSheet = .share
+        // Dispatch on next run loop so SwiftUI sees shareItems before presenting the sheet
+        DispatchQueue.main.async {
+            self.activeSheet = .share
+        }
     }
 
     func buildEmailBody() -> String {
@@ -347,7 +350,9 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         if !lumenService.insights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
         if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
         shareItems = [t]
-        activeSheet = .share
+        DispatchQueue.main.async {
+            self.activeSheet = .share
+        }
     }
 
     func sendChatMessage() {
