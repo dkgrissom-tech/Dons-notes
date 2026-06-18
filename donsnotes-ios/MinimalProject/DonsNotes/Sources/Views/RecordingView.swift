@@ -356,21 +356,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .frame(height: 52)
                 .padding(.top, LM.Space.sm)
 
-                // DEBUG LOG — remove before App Store submission
-                if !lumen.debugLog.isEmpty {
-                    ScrollView {
-                        Text(lumen.debugLog)
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundColor(.yellow.opacity(0.85))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 8)
-                    }
-                    .frame(height: 60)
-                    .background(Color.black.opacity(0.5))
-                    .cornerRadius(6)
-                    .padding(.horizontal, LM.Space.md)
-                    .padding(.top, 4)
-                }
+
 
                 Spacer()
 
@@ -495,14 +481,29 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 
     func uploadMeeting(url: URL) {
+        // api.donsnotes.com is offline — save meeting locally so the list and email work.
         isUploading = true
-        Task {
-            do {
-                _ = try await apiService.uploadMeeting(audioURL: url, attendees: attendees, organizerName: profileService.userName)
-                await MainActor.run { isUploading = false; dismiss() }
-            } catch {
-                await MainActor.run { isUploading = false }
-            }
+        Task { @MainActor in
+            // Build a Meeting from what we already have in memory.
+            let transcript = speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Build a quick summary from Ora Q&A insights if available.
+            let summary: String? = lumen.insights.isEmpty ? nil :
+                lumen.insights.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
+            let meeting = Meeting(
+                id: UUID(),
+                status: .completed,
+                audioUrl: url.absoluteString,
+                transcript: transcript.isEmpty ? nil : transcript,
+                summary: summary,
+                attendees: attendees,
+                organizerName: profileService.userName.isEmpty ? nil : profileService.userName,
+                createdAt: Date()
+            )
+            var saved = MeetingCacheService.shared.loadMeetings()
+            saved.insert(meeting, at: 0)
+            MeetingCacheService.shared.saveMeetings(saved)
+            isUploading = false
+            dismiss()
         }
     }
 }
