@@ -14,8 +14,6 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State private var timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     @State private var isSendingEmail = false
     @State private var emailSentConfirmation = false
-    @State private var activeSheet: MeetingActiveSheet? = nil
-    @State private var shareItems: [Any] = []
 
     // Audio
     @StateObject private var audioPlayer = MeetingAudioPlayer()
@@ -274,27 +272,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .preferredColorScheme(.dark)
-        .sheet(item: $activeSheet) { sheet in
-            switch sheet {
-            case .share:
-                ShareSheet(items: shareItems)
-            case .mailCompose:
-                MailComposeView(
-                    recipients: meeting.attendees.map { $0.email },
-                    subject: "Meeting Recap · \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))",
-                    body: buildEmailBody()
-                ) { result in
-                    activeSheet = nil
-                    if case .success(let r) = result, r == .sent {
-                        emailSentConfirmation = true
-                        Task {
-                            try? await Task.sleep(nanoseconds: 2_500_000_000)
-                            await MainActor.run { emailSentConfirmation = false }
-                        }
-                    }
-                }
-            }
-        }
+
         .onReceive(timer) { _ in if meeting.status.isProcessing { refreshMeeting() } }
         .onAppear {
             if let urlStr = meeting.audioUrl, let url = URL(string: urlStr) { audioPlayer.load(url: url) }
@@ -314,11 +292,23 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     func sendEmail() {
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
         let body = buildEmailBody()
-        shareItems = ["\(subject)\n\n\(body)"]
-        // Dispatch on next run loop so SwiftUI sees shareItems before presenting the sheet
-        DispatchQueue.main.async {
-            self.activeSheet = .share
+        presentShareSheet(items: ["\(subject)\n\n\(body)"])
+    }
+
+    func presentShareSheet(items: [Any]) {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let root = scene.windows.first?.rootViewController else { return }
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        // iPad needs a source rect
+        if let pop = vc.popoverPresentationController {
+            pop.sourceView = root.view
+            pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 0, height: 0)
+            pop.permittedArrowDirections = []
         }
+        // Find the topmost presented view controller
+        var presenter = root
+        while let p = presenter.presentedViewController { presenter = p }
+        presenter.present(vc, animated: true)
     }
 
     func buildEmailBody() -> String {
@@ -349,10 +339,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         if let items = meeting.actionItems, !items.isEmpty { t += "\nACTION ITEMS\n"; for (i, item) in items.enumerated() { t += "\(i+1). \(item)\n" } }
         if !lumenService.insights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in lumenService.insights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
         if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
-        shareItems = [t]
-        DispatchQueue.main.async {
-            self.activeSheet = .share
-        }
+        presentShareSheet(items: [t])
     }
 
     func sendChatMessage() {
