@@ -11,6 +11,7 @@ import AVFoundation
 
 struct RecordingView<T: APIServiceProtocol>: View {
     @ObservedObject var apiService: T
+    var preloadedAttendees: [Attendee] = []          // pre-populate from a past meeting
     @ObservedObject var contactService = ContactService.shared
     @ObservedObject var profileService = ProfileService.shared
     @StateObject var speechService = SpeechRecognizerService()
@@ -93,6 +94,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
             }
             .onAppear {
                 Task { await contactService.syncContacts(from: apiService) }
+                // Seed attendees from a repeated meeting (no-op if empty)
+                if !preloadedAttendees.isEmpty {
+                    attendees = preloadedAttendees
+                }
             }
             // Transcript observer on the stable OUTER view. The full cumulative transcript
             // is passed both as the trigger source and as the Claude context.
@@ -588,7 +593,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     var body = "Meeting Recap — ORA\n"
                     body += "Date: \(meeting.createdAt.formatted(date: .long, time: .shortened))\n"
                     if let org = meeting.organizerName, !org.isEmpty { body += "Organizer: \(org)\n" }
-                    if !attendeesCopy.isEmpty { body += "Attendees: \(attendeesCopy.map { $0.name }.joined(separator: ", "))\n" }
+                    if !attendeesCopy.isEmpty {
+                        body += "Attendees: \(attendeesCopy.map { "\($0.name) <\($0.email)>" }.joined(separator: ", "))\n"
+                    }
                     body += "\n"
                     if let s = summary { body += "SUMMARY\n\(s)\n\n" }
                     if let items = actionItems, !items.isEmpty {

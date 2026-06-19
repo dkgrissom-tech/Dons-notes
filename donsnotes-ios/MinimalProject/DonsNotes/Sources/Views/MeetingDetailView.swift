@@ -14,6 +14,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State private var timer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
     @State private var isSendingEmail = false
     @State private var emailSentConfirmation = false
+    @State private var isShowingRepeatMeeting = false
 
     // Audio
     @StateObject private var audioPlayer = MeetingAudioPlayer()
@@ -260,6 +261,29 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                                 action: sendEmail
                             )
                             .disabled(isSendingEmail)
+                            // Only show repeat button if this meeting had attendees
+                            if !meeting.attendees.isEmpty {
+                                LUMENButton(
+                                    title: "Repeat Meeting",
+                                    icon: "arrow.clockwise",
+                                    style: .ghost,
+                                    action: { isShowingRepeatMeeting = true }
+                                )
+                            }
+                        }
+                        .fullScreenCover(isPresented: $isShowingRepeatMeeting) {
+                            NavigationView {
+                                RecordingView(
+                                    apiService: apiService,
+                                    preloadedAttendees: meeting.attendees
+                                )
+                                .toolbar {
+                                    ToolbarItem(placement: .navigationBarLeading) {
+                                        Button("Cancel") { isShowingRepeatMeeting = false }
+                                            .foregroundColor(LM.Colors.textSecondary)
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -322,6 +346,9 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
         var t = "Meeting Recap — ORA\n"
         t += "Date: \(meeting.createdAt.formatted(date: .long, time: .shortened))\n"
         if let org = meeting.organizerName, !org.isEmpty { t += "Organizer: \(org)\n" }
+        if !meeting.attendees.isEmpty {
+            t += "Attendees: \(meeting.attendees.map { "\($0.name) <\($0.email)>" }.joined(separator: ", "))\n"
+        }
         t += "\n"
         if let s = meeting.summary { t += "SUMMARY\n\(s)\n\n" }
         if let items = meeting.actionItems, !items.isEmpty {
