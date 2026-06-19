@@ -94,8 +94,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
             }
             .onAppear {
                 Task { await contactService.syncContacts(from: apiService) }
-                // Seed attendees from a repeated meeting (no-op if empty)
-                if !preloadedAttendees.isEmpty {
+                // Seed attendees from a repeated meeting — only if not already populated
+                if attendees.isEmpty && !preloadedAttendees.isEmpty {
                     attendees = preloadedAttendees
                 }
             }

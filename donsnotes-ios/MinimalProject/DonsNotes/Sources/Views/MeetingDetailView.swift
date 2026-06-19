@@ -368,7 +368,7 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     func exportMeeting() {
         var t = "Meeting Notes — ORA\nDate: \(meeting.createdAt)\n\n"
         if let org = meeting.organizerName { t += "Organizer: \(org)\n" }
-        if !meeting.attendees.isEmpty { t += "Attendees: \(meeting.attendees.map { $0.name }.joined(separator: ", "))\n" }
+        if !meeting.attendees.isEmpty { t += "Attendees: \(meeting.attendees.map { "\($0.name) <\($0.email)>" }.joined(separator: ", "))\n" }
         if let s = meeting.summary { t += "\nSUMMARY\n\(s)\n" }
         if let items = meeting.actionItems, !items.isEmpty { t += "\nACTION ITEMS\n"; for (i, item) in items.enumerated() { t += "\(i+1). \(item)\n" } }
         if let storedInsights = meeting.insights, !storedInsights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in storedInsights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
