@@ -272,18 +272,10 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                             }
                         }
                         .fullScreenCover(isPresented: $isShowingRepeatMeeting) {
-                            NavigationView {
-                                RecordingView(
-                                    apiService: apiService,
-                                    preloadedAttendees: meeting.attendees
-                                )
-                                .toolbar {
-                                    ToolbarItem(placement: .navigationBarLeading) {
-                                        Button("Cancel") { isShowingRepeatMeeting = false }
-                                            .foregroundColor(LM.Colors.textSecondary)
-                                    }
-                                }
-                            }
+                            RecordingView(
+                                apiService: apiService,
+                                preloadedAttendees: meeting.attendees
+                            )
                         }
                     }
 

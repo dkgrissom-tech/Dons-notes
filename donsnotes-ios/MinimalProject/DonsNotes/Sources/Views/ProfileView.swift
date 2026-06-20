@@ -113,15 +113,14 @@ struct ProfileView: View {
                     }
                 }
 
-#if DEBUG
-                // MARK: - Developer Access (DEBUG only — not visible in App Store builds)
+                // MARK: - Developer Access (hidden — tap header 5x to reveal)
                 Section(header:
-                    Text(devTapCount >= 3 ? "Developer Access" : " ")
+                    Text(devTapCount >= 5 ? "Developer Access" : " ")
                         .onTapGesture {
                             devTapCount += 1
                         }
                 ) {
-                    if devTapCount >= 3 {
+                    if devTapCount >= 5 {
                         Toggle(isOn: Binding(
                             get: { subscriptionService.isOwner },
                             set: { subscriptionService.setOwnerBypass($0) }
@@ -137,7 +136,6 @@ struct ProfileView: View {
                         .tint(.cyan)
                     }
                 }
-#endif
 
                 Section {
                     Button("Save") {
