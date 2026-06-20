@@ -500,7 +500,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
         newAttendeeName = ""
     }
 
-    func presentRecapSheet(text: String) {
+    func presentRecapSheet(text: String, recipients: [String] = [], subject: String = "") {
         guard let scene = UIApplication.shared.connectedScenes
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive }),
@@ -508,7 +508,24 @@ struct RecordingView<T: APIServiceProtocol>: View {
               let root = window.rootViewController else {
             dismiss(); return
         }
-        let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+
+        // Build activity items: if we have recipients, include a mailto: URL
+        // so Mail/Gmail pre-fill the To: line. Always include the plain text
+        // so other share targets (Messages, Notes, etc.) still get content.
+        var items: [Any] = [text]
+        if !recipients.isEmpty {
+            let to = recipients.joined(separator: ",")
+            let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let bodyOnly = text
+                .split(separator: "\n\n", maxSplits: 1, omittingEmptySubsequences: false)
+                .dropFirst()
+                .joined(separator: "\n\n")
+            let encodedBody = bodyOnly.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let mailURL = URL(string: "mailto:\(to)?subject=\(encodedSubject)&body=\(encodedBody)") {
+                items = [mailURL]
+            }
+        }
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
             pop.sourceView = window
             pop.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 1, height: 1)
@@ -609,7 +626,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     }
                     if !cleanTranscript.isEmpty { body += "FULL TRANSCRIPT\n\(cleanTranscript)\n" }
                     body += "\n— Sent via ORA · AI Meeting Intelligence"
-                    presentRecapSheet(text: "\(subject)\n\n\(body)")
+                    let recipientEmails = attendeesCopy
+                        .map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }
+                        .filter { !$0.isEmpty }
+                    presentRecapSheet(text: "\(subject)\n\n\(body)", recipients: recipientEmails, subject: subject)
                 } else {
                     dismiss()
                 }

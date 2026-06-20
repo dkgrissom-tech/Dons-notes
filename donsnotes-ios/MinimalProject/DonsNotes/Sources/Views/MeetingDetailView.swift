@@ -308,6 +308,19 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     func sendEmail() {
         let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
         let body = buildEmailBody()
+        let recipients = meeting.attendees
+            .map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if !recipients.isEmpty {
+            // Pre-fill To: line using mailto: so Mail / Gmail open with attendees ready.
+            let to = recipients.joined(separator: ",")
+            let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            if let mailURL = URL(string: "mailto:\(to)?subject=\(encodedSubject)&body=\(encodedBody)") {
+                presentShareSheet(items: [mailURL])
+                return
+            }
+        }
         presentShareSheet(items: ["\(subject)\n\n\(body)"])
     }
 
