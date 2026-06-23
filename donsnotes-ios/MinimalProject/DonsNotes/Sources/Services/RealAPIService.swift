@@ -1,144 +1,182 @@
 import Foundation
 
+/// Build 86 — Bulletproof, no-backend architecture.
+/// Audio, meetings, and contacts all live on-device.
+/// AI calls go directly to Groq (chat + Whisper transcription).
 class RealAPIService: ObservableObject, APIServiceProtocol {
-    private let baseURL = URL(string: "https://api.donsnotes.com/v1")!
 
-    // Attach owner/tier headers so the backend can skip free-tier limits
-    private func applyCommonHeaders(_ request: inout URLRequest) {
-        let sub = SubscriptionService.shared
-        if sub.isOwner {
-            request.setValue("true", forHTTPHeaderField: "X-Owner-Bypass")
-            request.setValue("oraPro", forHTTPHeaderField: "X-Subscription-Tier")
-        } else {
-            request.setValue(sub.currentTier.rawValue, forHTTPHeaderField: "X-Subscription-Tier")
-        }
-    }
-    
+    // MARK: - Upload (now: local-only + Groq transcription + Groq summary)
     func uploadMeeting(audioURL: URL, attendees: [Attendee], organizerName: String?) async throws -> Meeting {
-        let uploadURL = baseURL.appendingPathComponent("/meetings/upload")
-        var request = URLRequest(url: uploadURL)
-        request.httpMethod = "POST"
-        applyCommonHeaders(&request)
+        // Step 1: create local Meeting in TRANSCRIBING state and persist immediately
+        let meetingId = UUID()
+        let now = Date()
+        let createdMeeting = Meeting(
+            id: meetingId,
+            status: .transcribing,
+            audioUrl: audioURL.absoluteString,   // local file:// URL
+            transcript: nil,
+            summary: nil,
+            attendees: attendees,
+            organizerName: organizerName,
+            createdAt: now,
+            actionItems: nil,
+            insights: nil
+        )
+        var cached = MeetingCacheService.shared.loadMeetings()
+        cached.insert(createdMeeting, at: 0)
+        MeetingCacheService.shared.saveMeetings(cached)
 
-        let boundary = "Boundary-\(UUID().uuidString)"
-        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
-        
-        let attendeeData = try JSONEncoder().encode(attendees)
-        let attendeeString = String(data: attendeeData, encoding: .utf8) ?? "[]"
-        
-        var body = Data()
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"recording.m4a\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/m4a\r\n\r\n".data(using: .utf8)!)
-        body.append(try Data(contentsOf: audioURL))
-        body.append("\r\n".data(using: .utf8)!)
-        
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"attendees\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(attendeeString)\r\n".data(using: .utf8)!)
-        
-        if let organizerName = organizerName {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"organizer_name\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(organizerName)\r\n".data(using: .utf8)!)
+        // Step 2: transcribe via Groq Whisper
+        let transcript: String
+        do {
+            transcript = try await GroqClient.transcribe(audioURL: audioURL)
+        } catch {
+            let failed = Self.replacingMeeting(createdMeeting, in: cached, with: { m in
+                Meeting(id: m.id, status: .failed, audioUrl: m.audioUrl, transcript: nil, summary: nil,
+                        attendees: m.attendees, organizerName: m.organizerName, createdAt: m.createdAt,
+                        actionItems: nil, insights: nil)
+            })
+            MeetingCacheService.shared.saveMeetings(failed)
+            throw error
         }
-        
-        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
-        
-        let (data, response) = try await URLSession.shared.upload(for: request, from: body)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 201 else {
-            throw URLError(.badServerResponse)
+
+        // Step 3: summarize transcript via Groq chat
+        let summary: String
+        let actionItems: [String]
+        do {
+            (summary, actionItems) = try await Self.summarize(transcript: transcript,
+                                                              organizerName: organizerName,
+                                                              attendees: attendees)
+        } catch {
+            // Transcript succeeded but summary failed — save what we have
+            let partial = Self.replacingMeeting(createdMeeting, in: cached, with: { m in
+                Meeting(id: m.id, status: .failed, audioUrl: m.audioUrl, transcript: transcript, summary: nil,
+                        attendees: m.attendees, organizerName: m.organizerName, createdAt: m.createdAt,
+                        actionItems: nil, insights: nil)
+            })
+            MeetingCacheService.shared.saveMeetings(partial)
+            throw error
         }
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(Meeting.self, from: data)
+
+        // Step 4: persist completed meeting
+        let completed = Meeting(
+            id: meetingId,
+            status: .completed,
+            audioUrl: audioURL.absoluteString,
+            transcript: transcript,
+            summary: summary,
+            attendees: attendees,
+            organizerName: organizerName,
+            createdAt: now,
+            actionItems: actionItems,
+            insights: nil
+        )
+        let final = Self.replacingMeeting(createdMeeting, in: cached, with: { _ in completed })
+        MeetingCacheService.shared.saveMeetings(final)
+        return completed
     }
-    
+
+    // MARK: - Local-only fetches
     func fetchMeetings() async throws -> [Meeting] {
-        let meetingsURL = baseURL.appendingPathComponent("/meetings")
-        let (data, response) = try await URLSession.shared.data(from: meetingsURL)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let meetings: [Meeting] = try decoder.decode([Meeting].self, from: data)
-        MeetingCacheService.shared.saveMeetings(meetings)
-        return meetings
+        return MeetingCacheService.shared.loadMeetings()
+            .sorted(by: { $0.createdAt > $1.createdAt })
     }
-    
+
     func fetchMeetingDetails(id: UUID) async throws -> Meeting {
-        let meetingURL = baseURL.appendingPathComponent("/meetings/\(id.uuidString.lowercased())")
-        let (data, response) = try await URLSession.shared.data(from: meetingURL)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
+        guard let m = MeetingCacheService.shared.loadMeetings().first(where: { $0.id == id }) else {
+            throw NSError(domain: "RealAPIService", code: 404,
+                          userInfo: [NSLocalizedDescriptionKey: "Meeting not found"])
         }
-        
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(Meeting.self, from: data)
+        return m
     }
-    
+
     func sendRecapEmail(id: UUID) async throws {
-        let sendURL = baseURL.appendingPathComponent("/meetings/\(id.uuidString.lowercased())/send")
-        var request = URLRequest(url: sendURL)
-        request.httpMethod = "POST"
-        applyCommonHeaders(&request)
-        
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        // Recap email is handled by the mailto: flow in MeetingDetailView.
+        // Kept for protocol compatibility but does nothing server-side.
     }
-    
+
     func fetchContacts() async throws -> [Attendee] {
-        let contactsURL = baseURL.appendingPathComponent("/contacts")
-        let (data, response) = try await URLSession.shared.data(from: contactsURL)
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        return try JSONDecoder().decode([Attendee].self, from: data)
+        return LocalContactsStore.shared.load()
     }
-    
+
     func saveContact(attendee: Attendee) async throws {
-        let contactsURL = baseURL.appendingPathComponent("/contacts")
-        var request = URLRequest(url: contactsURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyCommonHeaders(&request)
-        request.httpBody = try JSONEncoder().encode(attendee)
-        
-        let (_, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse, (httpResponse.statusCode == 200 || httpResponse.statusCode == 201) else {
-            throw URLError(.badServerResponse)
-        }
+        LocalContactsStore.shared.save(attendee)
     }
 
-    // MARK: - AI Proxy
-    // The backend holds the Anthropic key — the app never calls Claude directly.
+    // MARK: - AI (now talks directly to Groq, no backend)
     func askAI(question: String, context: String) async throws -> String {
-        let url = baseURL.appendingPathComponent("/ai/ask")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyCommonHeaders(&request)
+        let system = """
+        You are Ora, a calm, concise meeting assistant. Answer questions about the meeting context the user gives you. Keep answers short — 2-4 sentences unless asked for detail. Never invent facts not in the context.
+        """
+        let user = """
+        Meeting context:
+        \(context)
 
-        let body: [String: String] = ["question": question, "context": context]
-        request.httpBody = try JSONEncoder().encode(body)
+        Question: \(question)
+        """
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            let msg = String(data: data, encoding: .utf8) ?? ""
-            throw NSError(domain: "RealAPIService", code: status,
-                          userInfo: [NSLocalizedDescriptionKey: "AI proxy HTTP \(status): \(msg.prefix(200))"])
+        let messages: [GroqClient.ChatMessage] = [
+            .init(role: "system", content: system),
+            .init(role: "user", content: user)
+        ]
+
+        return try await GroqClient.chat(messages: messages, temperature: 0.3, timeoutSeconds: 20)
+    }
+
+    // MARK: - Helpers
+
+    private static func replacingMeeting(_ original: Meeting,
+                                         in list: [Meeting],
+                                         with transform: (Meeting) -> Meeting) -> [Meeting] {
+        list.map { $0.id == original.id ? transform($0) : $0 }
+    }
+
+    private static func summarize(transcript: String,
+                                  organizerName: String?,
+                                  attendees: [Attendee]) async throws -> (summary: String, actionItems: [String]) {
+        let attendeeNames = attendees.map { $0.name }.joined(separator: ", ")
+        let organizer = organizerName ?? "the organizer"
+
+        let system = """
+        You are Ora, a meeting-summary assistant. Given a raw transcript, produce:
+        1. A 3-5 sentence summary of what was discussed
+        2. A list of concrete action items in the form "PERSON: action by WHEN" (or "PERSON: action" if no when)
+
+        Return ONLY valid JSON with this exact shape:
+        {"summary": "...", "action_items": ["...", "..."]}
+
+        No prose before or after the JSON. No markdown fences.
+        """
+        let user = """
+        Organizer: \(organizer)
+        Attendees: \(attendeeNames.isEmpty ? "not specified" : attendeeNames)
+
+        Transcript:
+        \(transcript)
+        """
+
+        let raw = try await GroqClient.chat(
+            messages: [.init(role: "system", content: system), .init(role: "user", content: user)],
+            temperature: 0.2,
+            timeoutSeconds: 30
+        )
+
+        // Defensive JSON parse — Groq sometimes wraps in code fences despite instructions
+        let cleaned = raw
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        struct SummaryJSON: Decodable {
+            let summary: String
+            let action_items: [String]
         }
 
-        struct AIResponse: Decodable { let answer: String }
-        let result = try JSONDecoder().decode(AIResponse.self, from: data)
-        return result.answer
+        guard let data = cleaned.data(using: .utf8),
+              let parsed = try? JSONDecoder().decode(SummaryJSON.self, from: data) else {
+            // Fallback: return the raw text as summary, no action items
+            return (raw, [])
+        }
+        return (parsed.summary, parsed.action_items)
     }
 }
