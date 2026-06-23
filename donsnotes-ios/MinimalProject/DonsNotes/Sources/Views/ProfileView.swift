@@ -10,6 +10,9 @@ struct ProfileView: View {
     @State private var referralApplySuccess: Bool = false
     @State private var showCopiedConfirmation: Bool = false
     @State private var devTapCount: Int = 0
+    @State private var isShowingShareSheet = false
+    @State private var todayChat: Int = 0
+    @State private var todayTrans: Int = 0
     @Environment(\.dismiss) var dismiss
 
     private var referralService: ReferralService { ReferralService.shared }
@@ -99,6 +102,23 @@ struct ProfileView: View {
                     }
                 }
 
+                // MARK: - Ora Usage (Groq free-tier telemetry)
+                Section(header: Text("Ora Usage")) {
+                    HStack {
+                        Text("Chat calls today")
+                        Spacer()
+                        Text("\(todayChat)").foregroundColor(.secondary)
+                    }
+                    HStack {
+                        Text("Transcriptions today")
+                        Spacer()
+                        Text("\(todayTrans)").foregroundColor(.secondary)
+                    }
+                    Text("Free tier resets daily. Limits: ~14,400 chat / 7,200 transcription.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
                 // MARK: - Subscription
                 Section(header: Text("Subscription")) {
                     HStack {
@@ -159,6 +179,16 @@ struct ProfileView: View {
             .sheet(isPresented: $isShowingPricing) {
                 PlansView()
             }
+            .sheet(isPresented: $isShowingShareSheet) {
+                let code = referralService.myCode
+                let text = "Try Ora free for 30 days — use my code \(code) when you first open the app. Download: https://testflight.apple.com/join/5YckE6M7"
+                ShareSheet(items: [text])
+            }
+        }
+        .task {
+            let counts = await GroqUsageTracker.shared.todayCounts()
+            todayChat = counts.chat
+            todayTrans = counts.transcription
         }
     }
 
@@ -172,13 +202,8 @@ struct ProfileView: View {
     }
 
     private func shareCode() {
-        let code = referralService.myCode
-        let text = "Try Ora free for 30 days — use my code \(code) when you first open the app. Download: https://testflight.apple.com/join/5YckE6M7"
-        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let root = scene.windows.first?.rootViewController {
-            root.present(av, animated: true)
-        }
+        // iOS 18 crash-proof: show via SwiftUI sheet instead of presenting on rootViewController
+        isShowingShareSheet = true
     }
 
     private func applyCode() {

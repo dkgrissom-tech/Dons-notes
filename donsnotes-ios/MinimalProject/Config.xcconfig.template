@@ -1,6 +1,12 @@
 // Config.xcconfig.template — Copy to Config.xcconfig and fill in your keys
 // Config.xcconfig is in .gitignore — DO NOT commit
 
+// Build 86+: Groq replaces Anthropic. Free tier at console.groq.com.
+GROQ_API_KEY = your_groq_key_here
+
+// ElevenLabs (voice synthesis)
 ELEVENLABS_API_KEY = your_elevenlabs_key_here
 ELEVENLABS_VOICE_ID = EXAVITQu4vr4xnSDxMaL
+
+// Legacy — kept for compatibility, no longer used by app
 ANTHROPIC_API_KEY = your_anthropic_key_here
