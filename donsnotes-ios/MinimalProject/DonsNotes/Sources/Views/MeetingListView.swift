@@ -12,6 +12,8 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     @State private var isShowingPricing = false
     @State private var isLoading = false
     @State private var searchText = ""
+    @State private var lastErrorMessage: String? = nil
+    @State private var isBackendReachable: Bool = true
 
 
     var filteredMeetings: [Meeting] {
@@ -71,6 +73,27 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                     .padding(.horizontal, LM.Space.md)
                     .padding(.top, LM.Space.sm)
                     .padding(.bottom, LM.Space.md)
+
+                    if let errorMessage = lastErrorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .font(.system(size: 12))
+                            Text(errorMessage)
+                                .font(LM.Fonts.text(12))
+                                .foregroundColor(LM.Colors.textSecondary)
+                            Spacer()
+                            Button("Retry") { refresh() }
+                                .font(LM.Fonts.text(12, weight: .semibold))
+                                .foregroundColor(LM.Colors.cyan)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(8)
+                        .padding(.horizontal, LM.Space.md)
+                        .padding(.bottom, LM.Space.sm)
+                    }
 
                     if isLoading && meetings.isEmpty {
                         Spacer()
@@ -176,18 +199,43 @@ struct MeetingListView<T: APIServiceProtocol>: View {
 
     func refresh() {
         isLoading = true
+        lastErrorMessage = nil
         Task {
             do {
                 let fetched = try await apiService.fetchMeetings()
                 await MainActor.run {
                     meetings = fetched.sorted(by: { $0.createdAt > $1.createdAt })
                     MeetingCacheService.shared.saveMeetings(meetings)
+                    isBackendReachable = true
                     isLoading = false
                 }
             } catch {
-                await MainActor.run { isLoading = false }
+                await MainActor.run {
+                    // Critical: keep showing cached meetings, don't blank the UI
+                    isLoading = false
+                    isBackendReachable = false
+                    lastErrorMessage = friendlyError(error)
+                }
             }
         }
+    }
+
+    private func friendlyError(_ error: Error) -> String {
+        if let g = error as? GroqClient.GroqError {
+            return g.errorDescription ?? "Ora is briefly unavailable."
+        }
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNotConnectedToInternet:
+                return "You're offline. Showing cached meetings."
+            case NSURLErrorTimedOut:
+                return "Ora is slow to respond. Pull to retry."
+            default:
+                return "Connection issue. Pull to retry."
+            }
+        }
+        return "Couldn't load. Pull to retry."
     }
 }
 
