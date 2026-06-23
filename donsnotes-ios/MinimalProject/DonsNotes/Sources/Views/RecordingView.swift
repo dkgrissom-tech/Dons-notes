@@ -1,6 +1,7 @@
 import SwiftUI
 import Speech
 import AVFoundation
+import MessageUI
 
 // Architecture:
 //   - SpeechRecognizerService is the SOLE owner of the audio session/engine while recording.
@@ -509,32 +510,43 @@ struct RecordingView<T: APIServiceProtocol>: View {
             dismiss(); return
         }
 
-        // Build activity items: if we have recipients, include a mailto: URL
-        // so Mail/Gmail pre-fill the To: line. Always include the plain text
-        // so other share targets (Messages, Notes, etc.) still get content.
-        var items: [Any] = [text]
-        if !recipients.isEmpty {
-            let to = recipients.joined(separator: ",")
-            let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            let bodyOnly = text
-                .split(separator: "\n\n", maxSplits: 1, omittingEmptySubsequences: false)
-                .dropFirst()
-                .joined(separator: "\n\n")
-            let encodedBody = bodyOnly.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-            if let mailURL = URL(string: "mailto:\(to)?subject=\(encodedSubject)&body=\(encodedBody)") {
-                items = [mailURL]
+        // Find the top-most presenter
+        var presenter = root
+        while let p = presenter.presentedViewController, !p.isBeingDismissed { presenter = p }
+        let dismissAction = dismiss
+
+        // Extract body (strip first line which is the subject duplicate)
+        let bodyOnly = text
+            .split(separator: "\n\n", maxSplits: 1, omittingEmptySubsequences: false)
+            .dropFirst()
+            .joined(separator: "\n\n")
+
+        // If we have recipients AND the device can send mail, present the
+        // native Mail composer directly. This is the only reliable way to
+        // pre-fill To:/Subject:/Body: — share sheets stringify mailto: URLs.
+        if !recipients.isEmpty, MFMailComposeViewController.canSendMail() {
+            let mc = MFMailComposeViewController()
+            let delegate = RecapMailDelegate { _ in
+                DispatchQueue.main.async { dismissAction() }
             }
+            mc.mailComposeDelegate = delegate
+            // Retain delegate on the controller — it's a class so this is safe
+            objc_setAssociatedObject(mc, &RecapMailDelegate.assocKey, delegate, .OBJC_ASSOCIATION_RETAIN)
+            mc.setToRecipients(recipients)
+            mc.setSubject(subject)
+            mc.setMessageBody(bodyOnly, isHTML: false)
+            presenter.present(mc, animated: true)
+            return
         }
-        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+
+        // Fallback: no recipients (or device can't send mail) — show share
+        // sheet with plain text so Messages/Copy/Notes still work.
+        let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
             pop.sourceView = window
             pop.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 1, height: 1)
             pop.permittedArrowDirections = []
         }
-        var presenter = root
-        while let p = presenter.presentedViewController, !p.isBeingDismissed { presenter = p }
-        // Capture dismiss as a local closure — RecordingView is a struct, no weak needed
-        let dismissAction = dismiss
         vc.completionWithItemsHandler = { _, _, _, _ in
             DispatchQueue.main.async { dismissAction() }
         }
@@ -783,5 +795,20 @@ final class AttendeeVoiceInput: NSObject, ObservableObject {
         isRecording = false
         // Release the session so the recording pipeline can claim it later.
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+}
+
+// MARK: - Mail compose delegate for recap email
+// Used by RecordingView.presentRecapSheet to host MFMailComposeViewController.
+// Held alive via objc_setAssociatedObject on the controller — released when
+// the controller is dismissed.
+final class RecapMailDelegate: NSObject, MFMailComposeViewControllerDelegate {
+    static var assocKey: UInt8 = 0
+    let onFinish: (MFMailComposeResult) -> Void
+    init(onFinish: @escaping (MFMailComposeResult) -> Void) { self.onFinish = onFinish }
+    func mailComposeController(_ controller: MFMailComposeViewController,
+                               didFinishWith result: MFMailComposeResult,
+                               error: Error?) {
+        controller.dismiss(animated: true) { [onFinish] in onFinish(result) }
     }
 }
