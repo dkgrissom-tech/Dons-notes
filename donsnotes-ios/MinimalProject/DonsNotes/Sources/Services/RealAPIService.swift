@@ -137,13 +137,34 @@ class RealAPIService: ObservableObject, APIServiceProtocol {
         let attendeeNames = attendees.map { $0.name }.joined(separator: ", ")
         let organizer = organizerName ?? "the organizer"
 
+        // Build 90: Plaud-style structured summary. The `summary` field becomes
+        // a multi-section text block (OVERVIEW / KEY DECISIONS / ACTION ITEMS /
+        // OPEN QUESTIONS / NEXT STEPS); action_items also returned separately
+        // for the UI's dedicated action-items section.
         let system = """
-        You are Ora, a meeting-summary assistant. Given a raw transcript, produce:
-        1. A 3-5 sentence summary of what was discussed
-        2. A list of concrete action items in the form "PERSON: action by WHEN" (or "PERSON: action" if no when)
+        You are Ora, a meeting-summary assistant. Given a raw transcript, produce a STRUCTURED summary AND a separate action items list.
 
-        Return ONLY valid JSON with this exact shape:
-        {"summary": "...", "action_items": ["...", "..."]}
+        For the "summary" field, write a multi-section text block using these EXACT section headers in ALL CAPS, each on its own line. Skip a section if there is genuinely nothing to put there (do not write "none" or "N/A"). Bullets start with "- ". No markdown, no emojis.
+
+        OVERVIEW
+        A 2-4 sentence paragraph describing what the meeting was about.
+
+        KEY DECISIONS
+        - One bullet per decision actually made.
+
+        ACTION ITEMS
+        - PERSON: action by WHEN (or PERSON: action if no when was stated)
+
+        OPEN QUESTIONS
+        - Unresolved questions or things that need follow-up.
+
+        NEXT STEPS
+        - Concrete next-meeting or next-week items.
+
+        For the "action_items" array, repeat the action item bullets without the leading "- ", one item per array element.
+
+        Return ONLY valid JSON with this exact shape (the "summary" string contains the full multi-section text with \\n newlines between lines):
+        {"summary": "OVERVIEW\\n...\\n\\nKEY DECISIONS\\n- ...", "action_items": ["...", "..."]}
 
         No prose before or after the JSON. No markdown fences.
         """

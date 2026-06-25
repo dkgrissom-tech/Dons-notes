@@ -16,6 +16,11 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State private var emailSentConfirmation = false
     @State private var isShowingRepeatMeeting = false
 
+    // Build 90: editable meeting title
+    @State private var isEditingTitle = false
+    @State private var draftTitle = ""
+    @FocusState private var titleFieldFocused: Bool
+
     // Audio
     @StateObject private var audioPlayer = MeetingAudioPlayer()
 
@@ -38,9 +43,40 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                         VStack(alignment: .leading, spacing: 10) {
                             HStack(alignment: .top) {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(meeting.createdAt, style: .date)
-                                        .font(LM.Fonts.text(20, weight: .bold))
-                                        .foregroundColor(LM.Colors.textPrimary)
+                                    // Build 90: editable title (tap to rename). Falls back to date if untitled.
+                                    if isEditingTitle {
+                                        HStack(spacing: 6) {
+                                            TextField("Meeting title", text: $draftTitle)
+                                                .font(LM.Fonts.text(20, weight: .bold))
+                                                .foregroundColor(LM.Colors.textPrimary)
+                                                .focused($titleFieldFocused)
+                                                .submitLabel(.done)
+                                                .onSubmit { saveTitle() }
+                                            Button(action: saveTitle) {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(LM.Colors.cyan)
+                                                    .font(LM.Fonts.text(20))
+                                            }
+                                        }
+                                    } else {
+                                        Button(action: {
+                                            draftTitle = meeting.title ?? ""
+                                            isEditingTitle = true
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { titleFieldFocused = true }
+                                        }) {
+                                            HStack(spacing: 6) {
+                                                Text(meeting.title?.isEmpty == false
+                                                     ? (meeting.title ?? "")
+                                                     : (meeting.createdAt.formatted(date: .abbreviated, time: .omitted)))
+                                                    .font(LM.Fonts.text(20, weight: .bold))
+                                                    .foregroundColor(LM.Colors.textPrimary)
+                                                Image(systemName: "pencil")
+                                                    .font(LM.Fonts.text(12))
+                                                    .foregroundColor(LM.Colors.textTertiary)
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                     Text(meeting.createdAt, style: .time)
                                         .font(LM.Fonts.mono(12))
                                         .foregroundColor(LM.Colors.textTertiary)
@@ -395,6 +431,37 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                 isChatLoading = false
             }
         }
+    }
+
+    // Build 90: persist edited meeting title to the local cache.
+    // Updates the in-memory meeting + rewrites the cached meetings array so
+    // the new title survives app restarts.
+    private func saveTitle() {
+        let trimmed = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let newTitle: String? = trimmed.isEmpty ? nil : trimmed
+        // Rebuild meeting struct with updated title (Meeting is mostly let-bound)
+        let updated = Meeting(
+            id: meeting.id,
+            status: meeting.status,
+            audioUrl: meeting.audioUrl,
+            transcript: meeting.transcript,
+            summary: meeting.summary,
+            attendees: meeting.attendees,
+            organizerName: meeting.organizerName,
+            createdAt: meeting.createdAt,
+            actionItems: meeting.actionItems,
+            insights: meeting.insights,
+            title: newTitle
+        )
+        meeting = updated
+        // Persist into cached array
+        var all = MeetingCacheService.shared.loadMeetings()
+        if let idx = all.firstIndex(where: { $0.id == updated.id }) {
+            all[idx] = updated
+            MeetingCacheService.shared.saveMeetings(all)
+        }
+        isEditingTitle = false
+        titleFieldFocused = false
     }
 }
 

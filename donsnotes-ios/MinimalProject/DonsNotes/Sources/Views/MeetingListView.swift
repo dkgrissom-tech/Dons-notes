@@ -248,6 +248,12 @@ struct LUMENMeetingCard: View {
         return f.string(from: meeting.createdAt)
     }
 
+    // Build 90: prefer user-set title; fall back to date
+    private var displayTitle: String {
+        if let t = meeting.title, !t.trimmingCharacters(in: .whitespaces).isEmpty { return t }
+        return dateString
+    }
+
     private var preview: String {
         if let s = meeting.summary, !s.isEmpty { return String(s.prefix(110)) + (s.count > 110 ? "..." : "") }
         return meeting.status.isProcessing ? "Processing with LUMEN..." : "Tap to view"
@@ -265,9 +271,15 @@ struct LUMENMeetingCard: View {
                 // Header
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(dateString)
+                        Text(displayTitle)
                             .font(LM.Fonts.text(15, weight: .semibold))
                             .foregroundColor(LM.Colors.textPrimary)
+                            .lineLimit(1)
+                        if meeting.title != nil, !(meeting.title?.isEmpty ?? true) {
+                            Text(dateString)
+                                .font(LM.Fonts.text(11))
+                                .foregroundColor(LM.Colors.textTertiary)
+                        }
                         if let org = meeting.organizerName, !org.isEmpty {
                             Text(org)
                                 .font(LM.Fonts.mono(10))
