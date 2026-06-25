@@ -47,6 +47,7 @@ struct Meeting: Codable, Identifiable {
     let actionItems: [String]?
     let insights: [LUMENInsight]?
     var title: String? = nil    // Build 90: user-editable meeting title (optional, falls back to date)
+    var isArchived: Bool = false // Build 91: archived meetings hidden from main list
     
     var durationFormatted: String {
         return ""
@@ -64,10 +65,11 @@ struct Meeting: Codable, Identifiable {
         case actionItems = "action_items"
         case insights
         case title
+        case isArchived = "is_archived"
     }
     
     // Memberwise init for use in tests/mocks and local construction
-    init(id: UUID, status: MeetingStatus, audioUrl: String?, transcript: String?, summary: String?, attendees: [Attendee], organizerName: String?, createdAt: Date, actionItems: [String]? = nil, insights: [LUMENInsight]? = nil, title: String? = nil) {
+    init(id: UUID, status: MeetingStatus, audioUrl: String?, transcript: String?, summary: String?, attendees: [Attendee], organizerName: String?, createdAt: Date, actionItems: [String]? = nil, insights: [LUMENInsight]? = nil, title: String? = nil, isArchived: Bool = false) {
         self.id = id
         self.status = status
         self.audioUrl = audioUrl
@@ -79,6 +81,7 @@ struct Meeting: Codable, Identifiable {
         self.actionItems = actionItems
         self.insights = insights
         self.title = title
+        self.isArchived = isArchived
     }
     
     init(from decoder: Decoder) throws {
@@ -94,6 +97,7 @@ struct Meeting: Codable, Identifiable {
         actionItems = try container.decodeIfPresent([String].self, forKey: .actionItems)
         insights = try container.decodeIfPresent([LUMENInsight].self, forKey: .insights)
         title = try container.decodeIfPresent(String.self, forKey: .title)
+        isArchived = (try? container.decodeIfPresent(Bool.self, forKey: .isArchived)) ?? false
     }
     
     func encode(to encoder: Encoder) throws {
@@ -109,5 +113,6 @@ struct Meeting: Codable, Identifiable {
         try container.encodeIfPresent(actionItems, forKey: .actionItems)
         try container.encodeIfPresent(insights, forKey: .insights)
         try container.encodeIfPresent(title, forKey: .title)
+        try container.encode(isArchived, forKey: .isArchived)
     }
 }

@@ -15,16 +15,43 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     @State private var lastErrorMessage: String? = nil
     @State private var isBackendReachable: Bool = true
 
+    // Build 91: archive view + delete confirmation
+    @State private var showArchived: Bool = false
+    @State private var pendingDeleteMeeting: Meeting? = nil
 
     var filteredMeetings: [Meeting] {
-        if searchText.isEmpty { return meetings }
+        // Build 91: respect the archived toggle
+        let scoped = meetings.filter { $0.isArchived == showArchived }
+        if searchText.isEmpty { return scoped }
         let q = searchText.lowercased()
-        return meetings.filter {
+        return scoped.filter {
             ($0.summary?.lowercased().contains(q) ?? false) ||
             ($0.transcript?.lowercased().contains(q) ?? false) ||
+            ($0.title?.lowercased().contains(q) ?? false) ||
             $0.attendees.contains(where: { $0.name.lowercased().contains(q) || $0.email.lowercased().contains(q) }) ||
             ($0.organizerName?.lowercased().contains(q) ?? false)
         }
+    }
+
+    // Build 91: archive toggle + delete with persistence
+    private func toggleArchive(_ meeting: Meeting) {
+        guard let idx = meetings.firstIndex(where: { $0.id == meeting.id }) else { return }
+        let m = meetings[idx]
+        let updated = Meeting(
+            id: m.id, status: m.status, audioUrl: m.audioUrl,
+            transcript: m.transcript, summary: m.summary,
+            attendees: m.attendees, organizerName: m.organizerName,
+            createdAt: m.createdAt, actionItems: m.actionItems,
+            insights: m.insights, title: m.title,
+            isArchived: !m.isArchived
+        )
+        meetings[idx] = updated
+        MeetingCacheService.shared.saveMeetings(meetings)
+    }
+
+    private func deleteMeeting(_ meeting: Meeting) {
+        meetings.removeAll { $0.id == meeting.id }
+        MeetingCacheService.shared.saveMeetings(meetings)
     }
 
     var body: some View {
@@ -128,6 +155,23 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                                         LUMENMeetingCard(meeting: meeting)
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    // Build 91: long-press menu for archive / delete
+                                    .contextMenu {
+                                        Button {
+                                            toggleArchive(meeting)
+                                        } label: {
+                                            Label(meeting.isArchived ? "Unarchive" : "Archive",
+                                                  systemImage: meeting.isArchived ? "tray.and.arrow.up" : "archivebox")
+                                        }
+                                        Button(role: .destructive) {
+                                            pendingDeleteMeeting = meeting
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                    // Build 91: also expose swipe-from-trailing-edge as a SwiftUI swipe action
+                                    // (NOTE: .swipeActions requires List; we approximate with a leading offset
+                                    // gesture would be more code than the value adds. Long-press handles both cases.)
                                 }
                             }
                             .padding(.horizontal, LM.Space.md)
@@ -149,6 +193,12 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HStack(spacing: 10) {
+                        // Build 91: archive view toggle
+                        Button(action: { showArchived.toggle() }) {
+                            Image(systemName: showArchived ? "tray.full" : "archivebox")
+                                .font(LM.Fonts.text(17))
+                                .foregroundColor(showArchived ? LM.Colors.cyan : LM.Colors.textSecondary)
+                        }
                         Button(action: { isShowingProfile = true }) {
                             Image(systemName: "person.circle")
                                 .font(LM.Fonts.text(17))
@@ -185,6 +235,15 @@ struct MeetingListView<T: APIServiceProtocol>: View {
             }
             .sheet(isPresented: $isShowingPricing) {
                 PlansView()
+            }
+            // Build 91: confirm delete
+            .alert(item: $pendingDeleteMeeting) { meeting in
+                Alert(
+                    title: Text("Delete this meeting?"),
+                    message: Text("This can't be undone."),
+                    primaryButton: .destructive(Text("Delete")) { deleteMeeting(meeting) },
+                    secondaryButton: .cancel()
+                )
             }
             .onAppear {
                 meetings = MeetingCacheService.shared.loadMeetings()
