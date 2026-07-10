@@ -1,5 +1,5 @@
 # ORA PROJECT BRAIN
-**Last updated:** June 16, 2026 — Load this at the start of every session.
+**Last updated:** July 10, 2026 — Load this at the start of every session.
 
 ---
 
@@ -14,7 +14,7 @@
 | **GitHub repo** | https://github.com/dkgrissom-tech/Dons-notes |
 | **Local clone** | `/tmp/Dons-notes-work/` |
 | **TestFlight** | https://testflight.apple.com/join/5YckE6M7 |
-| **Current build** | 48 (ASC CFBundleVersion shows 47 — Fastlane auto-increments from ASC, not git) |
+| **Current build** | 91 |
 | **Trigger word** | `"ora"` — say it mid-meeting to activate AI |
 | **AI voice** | Daniel (ElevenLabs) — British male |
 | **AI backend** | Groq `llama-3.3-70b-versatile` — FREE for all users, zero cost per user |
@@ -54,18 +54,21 @@
 | **Workflow file** | `/.github/workflows/build.yml` (repo root) |
 | **Runner** | `macos-15`, `Xcode_26.3.app` |
 | **Fastfile location** | `donsnotes-ios/MinimalProject/fastlane/Fastfile` |
-| **Upload lane name** | `release` (NOT `appstore` — this burned builds before) |
+| **Upload lane name** | `beta` (NOT `appstore` or `release` for TestFlight builds) |
+| **App Store submit lane** | `release` — triggered by git tag `v*.*.*-release` only |
 | **xcargs includes** | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `GROQ_API_KEY` |
 | **Trigger** | Push to `master` |
 | **Build number** | Fastlane auto-increments CFBundleVersion from latest ASC build — git commit numbers and ASC numbers WILL diverge. This is normal. |
 
-### Post-upload checklist (run after every successful CI build — automated by subagent)
-```
-1. GET /v1/builds?filter[app]=6777510925&sort=-uploadedDate&limit=5 → find build ID
-2. PATCH build → usesNonExemptEncryption=false (409=already set, that's fine)
-3. POST betaGroups/aca5f162.../relationships/builds → internal group
-4. POST betaGroups/03dff58c.../relationships/builds → external group
-```
+### Post-upload checklist — NOW FULLY AUTOMATED (Build 91+)
+The Fastfile `beta` lane handles all post-upload steps automatically after every CI build:
+1. Generates ASC JWT from GitHub Secrets (`APP_STORE_CONNECT_API_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_API_KEY`) via PyJWT step in workflow
+2. Polls ASC every 30s (up to 10 min) until build appears as `VALID`
+3. `PATCH /v1/builds/{id}` → `usesNonExemptEncryption=false` (clears export compliance — 409=already set, that's fine)
+4. `POST betaGroups/aca5f162.../relationships/builds` → internal group
+5. `POST betaGroups/03dff58c.../relationships/builds` → external group
+
+**No manual App Store Connect steps needed after a push. Fully hands-off.**
 
 ---
 
@@ -79,12 +82,15 @@
 │   ├── LUMENDesignSystem.swift         — design system (class names kept LUMEN* internally)
 │   ├── Services/
 │   │   ├── SpeechRecognizerService.swift  — owns AVAudioSession exclusively
+│   │   │                                    AVAudioSession category: .playAndRecord
+│   │   │                                    mode: .measurement, options: .duckOthers
 │   │   ├── LUMENService.swift             — silenceWaitSeconds=2.5, Groq via askGroq()
 │   │   ├── SubscriptionService.swift      — isOwner bypass, canUseOraAI, .oraPro tier
 │   │   ├── ReferralService.swift
 │   │   └── RealAPIService.swift           — X-Owner-Bypass header, askAI() method
 │   └── Views/
 │       ├── RecordingView.swift         — dual mic buttons (name + email), FocusState
+│       │                                 Build 91: CTCallCenter monitor, phoneCallBannerVisible
 │       ├── LUMENOrbView.swift          — label shows "ORA"
 │       ├── MeetingListView.swift       — NO onboarding here (removed Build 48)
 │       ├── ProfileView.swift           — dev bypass: tap header 3x → toggle
@@ -123,6 +129,7 @@
 | 46 | Icon to correct xcassets; StoreKit crash-safe; IAP ID orapro | ❌ | Conflicting icon-1024.png (lowercase) caused 409 on upload |
 | 47 | Remove old icon-1024.png | ❌ CI | Build 48 pushed before 47 confirmed |
 | 48 | Fix crash: remove duplicate onboarding in MeetingListView | ✅ | Two onboarding systems fought → crash |
+| 91 | Phone call interruption detection + auto-resume + automated post-upload pipeline | ✅ | See lessons 18–20 below |
 
 ---
 
@@ -130,14 +137,14 @@
 
 1. `Info.plist` uses `$(CURRENT_PROJECT_VERSION)` / `$(MARKETING_VERSION)` — NEVER hardcode
 2. `SubscriptionService` must NOT be `@MainActor` — LUMENService reads from nonisolated context
-3. `SpeechRecognizerService` owns AVAudioSession exclusively
+3. `SpeechRecognizerService` owns AVAudioSession exclusively — category: `.playAndRecord`, mode: `.measurement`, options: `.duckOthers`
 4. `removeTap(onBus: 0)` unconditional before `installTap`
 5. `orbState = .listening` set BEFORE `speechService.startListening()`
 6. **TimelineView `@ViewBuilder`: NO `let` bindings** — use OrbFrame struct
 7. `.onChange(of:)` must use `{ _, newValue in }` syntax (Xcode 26)
 8. Trigger word is `"ora"` (single word, lowercase)
 9. Fastlane App Store lane is named `release` not `appstore`
-10. After every upload: set export compliance + add to both TestFlight groups via API
+10. Post-upload steps (export compliance + TestFlight groups) are now automated in the Fastfile beta lane — do NOT run manually
 11. **Swift 6**: No `DispatchQueue.main.async` — use `Task { @MainActor in }` with `[weak self]` at closure start
 12. When renaming enum cases, grep ALL files — sed misses model files
 13. MockAPIService must implement ALL protocol methods or CI fails
@@ -145,20 +152,24 @@
 15. **One onboarding system only** — `DonsNotesApp` is the gate via `@AppStorage("hasSeenOnboarding")`
 16. **Fastlane auto-increments CFBundleVersion from ASC** — git build numbers and ASC build numbers will diverge
 17. User must delete + reinstall from TestFlight to get new icon (iOS icon cache doesn't update on OTA)
+18. **Cellular call interruptions do NOT include `.shouldResume`** — `AVAudioSession.interruptionNotification` alone will never auto-resume after a phone call. Use `CTCallCenter.callEventHandler` for cellular call detection and recovery.
+19. **`CTCallCenter.callEventHandler` fires on a background thread** — always dispatch to `@MainActor` via `Task { @MainActor in }` before touching any `@State` or UI.
+20. **Post-upload pipeline is fully automated as of Build 91** — the Fastfile beta lane polls ASC, sets export compliance, and adds to both TestFlight groups. The workflow generates the ASC JWT via PyJWT from GitHub Secrets. No manual ASC steps ever needed again.
 
 ---
 
 ## 8. Known Bugs & Current Status
 
-### Currently broken (Build 48)
-- **Crash after intro** — root cause not yet confirmed. Duplicate onboarding removed in B48 but crash persists. Need crash log. Likely in `MeetingListView.onAppear` or `SubscriptionService.refreshEntitlements`.
-- **Icon** — should now be fixed in B48 (correct xcassets, no conflicting files) but user must delete+reinstall
+### Current build: 91
+- **Phone call interruption** — Fixed in B91. CTCallCenter monitors cellular calls. Banner shown when call active. Auto-resumes 0.8s after call ends.
+- **Silent fail on cellular calls** — Fixed in B91. Previously: iOS killed audio session with no user feedback. Now: banner + auto-resume.
 
-### Fixed
+### Fixed (history)
 - Ora only answered once per session (alreadyTriggered never reset) — fixed B45
 - App name showed "DonsNotes" in TestFlight — fixed B44 (PRODUCT_NAME=Ora)
 - Groq free AI for all users — fixed B39
 - Dev bypass for testing Pro features — fixed B34
+- Crash after intro (duplicate onboarding) — fixed B48
 
 ---
 
