@@ -2,6 +2,7 @@ import SwiftUI
 import Speech
 import AVFoundation
 import MessageUI
+import CoreTelephony
 
 // Architecture:
 //   - SpeechRecognizerService is the SOLE owner of the audio session/engine while recording.
@@ -28,6 +29,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @State private var flushTimer: Timer? = nil                          // Build 90: auto-flush transcript every 30s
     @State private var interruptionObserver: NSObjectProtocol? = nil     // Build 90: phone-call/AirPods/sleep handler
     @State private var resumeAfterInterruption: Bool = false             // Build 90: track if we paused due to interruption
+    @State private var callCenter: CTCallCenter? = nil          // Build 91: cellular call monitor
+    @State private var phoneCallBannerVisible: Bool = false     // Build 91: banner shown during call
     @FocusState private var nameFieldFocused: Bool
     @FocusState private var emailFieldFocused: Bool
     @Environment(\.dismiss) var dismiss
@@ -417,6 +420,42 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .padding(.horizontal, LM.Space.md)
                 .padding(.bottom, LM.Space.xl)
             }
+
+            // Build 91: Phone call banner — floats above recording HUD when a
+            // cellular call is active. Slides in from top, auto-dismisses on call end.
+            if phoneCallBannerVisible {
+                VStack {
+                    HStack(spacing: 10) {
+                        Image(systemName: "phone.fill")
+                            .font(LM.Fonts.text(14))
+                            .foregroundColor(LM.Colors.textPrimary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Recording paused — phone call active")
+                                .font(LM.Fonts.mono(11, weight: .bold))
+                                .foregroundColor(LM.Colors.textPrimary)
+                                .tracking(0.5)
+                            Text("Ora will resume automatically when your call ends")
+                                .font(LM.Fonts.text(11))
+                                .foregroundColor(LM.Colors.textSecondary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.vertical, 12)
+                    .background(LM.Colors.surface)
+                    .cornerRadius(LM.Radius.md)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: LM.Radius.md)
+                            .stroke(LM.Colors.borderDim, lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.top, LM.Space.md)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(duration: 0.35), value: phoneCallBannerVisible)
+            }
         }
     }
 
@@ -493,12 +532,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
             }
         }
 
-        // Build 90: Listen for AVAudioSession interruptions (phone calls, Siri, alarms,
-        // AirPods route changes, screen sleep). When an interruption begins, the
-        // speech recognizer is already torn down by iOS — we just log it. When the
-        // interruption ends with .shouldResume, we restart the recognizer so the
-        // user doesn't have to tap anything. Their previous transcript is preserved
-        // because SpeechRecognizerService appends to fullTranscript across restarts.
+        // Build 91: AVAudioSession interruption observer — handles Siri, alarms, AirPods.
+        // Cellular calls do NOT include .shouldResume so they are handled by CTCallCenter below.
         if interruptionObserver == nil {
             interruptionObserver = NotificationCenter.default.addObserver(
                 forName: AVAudioSession.interruptionNotification,
@@ -510,13 +545,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
                       let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
                 switch type {
                 case .began:
-                    // iOS has already paused our audio. Mark that we want to resume.
                     resumeAfterInterruption = speechService.isListening
                 case .ended:
                     let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    // Only auto-resume for non-call interruptions that include .shouldResume.
+                    // Call end is handled by CTCallCenter handler below.
                     if options.contains(.shouldResume), resumeAfterInterruption {
-                        // Restart the recognizer; transcript buffer persists internally.
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             if !speechService.isListening {
                                 speechService.startListening()
@@ -525,6 +560,36 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     }
                     resumeAfterInterruption = false
                 @unknown default: break
+                }
+            }
+        }
+
+        // Build 91: CTCallCenter — watches cellular call state.
+        // Fires on a background thread; always dispatch to @MainActor.
+        // When a call starts: show banner, mark resume-needed.
+        // When call ends: hide banner, force-restart recording (no .shouldResume needed).
+        let cc = CTCallCenter()
+        callCenter = cc
+        cc.callEventHandler = { call in
+            Task { @MainActor in
+                switch call.callState {
+                case CTCallStateConnected, CTCallStateDialing, CTCallStateIncoming:
+                    if speechService.isListening {
+                        resumeAfterInterruption = true
+                    }
+                    phoneCallBannerVisible = true
+                case CTCallStateDisconnected:
+                    phoneCallBannerVisible = false
+                    if resumeAfterInterruption {
+                        resumeAfterInterruption = false
+                        // Give iOS 0.8s to fully release the audio session after the call.
+                        try? await Task.sleep(nanoseconds: 800_000_000)
+                        if !speechService.isListening {
+                            speechService.startListening()
+                        }
+                    }
+                default:
+                    break
                 }
             }
         }
@@ -544,6 +609,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
             NotificationCenter.default.removeObserver(obs)
             interruptionObserver = nil
         }
+        // Build 91: tear down CTCallCenter monitor and dismiss banner.
+        callCenter?.callEventHandler = nil
+        callCenter = nil
+        phoneCallBannerVisible = false
         // Clear the recovery file since the meeting ended cleanly.
         if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
             let url = docs.appendingPathComponent("transcript_recovery.txt")
