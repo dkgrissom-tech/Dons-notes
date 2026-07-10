@@ -28,6 +28,26 @@ jobs:
           printf "%s" "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
           chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
 
+      - name: Generate App Store Connect JWT
+        id: asc_jwt
+        run: |
+          pip3 install PyJWT cryptography -q
+          python3 << 'PYEOF'
+          import jwt, time, os
+          key_id = "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}"
+          issuer_id = "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+          key_path = os.path.expanduser(f"~/.appstoreconnect/private_keys/AuthKey_{key_id}.p8")
+          with open(key_path) as f:
+              private_key = f.read()
+          now = int(time.time())
+          payload = {"iss": issuer_id, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"}
+          token = jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": key_id})
+          # Write to env file for subsequent steps
+          with open(os.environ["GITHUB_ENV"], "a") as env_file:
+              env_file.write(f"ASC_JWT={token}\n")
+          print("JWT generated successfully.")
+          PYEOF
+
       - name: Import distribution certificate and provisioning profile
         run: |
           # Create a temporary keychain
@@ -76,12 +96,12 @@ jobs:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          ASC_JWT: ${{ env.ASC_JWT }}
         run: bundle exec fastlane beta
 
   # ─────────────────────────────────────────────────────────────────────────────
   # App Store submission — triggers ONLY on release tags (v*.*.*-release)
   # Usage: git tag v1.5.0-release && git push origin v1.5.0-release
-  # This will build a fresh IPA and submit it to App Store review automatically.
   # ─────────────────────────────────────────────────────────────────────────────
   submit-appstore:
     if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref, '-release')
