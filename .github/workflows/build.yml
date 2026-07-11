@@ -31,8 +31,9 @@ jobs:
       - name: Generate App Store Connect JWT
         id: asc_jwt
         run: |
-          pip3 install PyJWT cryptography -q
-          python3 << 'PYEOF'
+          python3 -m venv /tmp/asc_venv
+          /tmp/asc_venv/bin/pip install PyJWT cryptography -q
+          /tmp/asc_venv/bin/python3 << 'PYEOF'
           import jwt, time, os
           key_id = "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}"
           issuer_id = "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
