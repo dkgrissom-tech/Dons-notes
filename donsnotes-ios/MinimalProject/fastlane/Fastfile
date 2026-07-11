@@ -57,7 +57,7 @@ platform :ios do
     #   1. Set usesNonExemptEncryption = false  (clears MISSING_EXPORT_COMPLIANCE)
     #   2. Add to internal TestFlight group     (aca5f162-a25f-4d25-ba57-165c98b1aa55)
     #   3. Add to external TestFlight group     (03dff58c-e0bd-4276-b720-5fcd9dfde010)
-    UI.message("Waiting for Apple to process the build (polling every 30s, up to 10 min)...")
+    UI.message("Waiting for Apple to process the build (polling every 30s, up to 20 min)...")
 
     app_id           = "6777510925"
     internal_group   = "aca5f162-a25f-4d25-ba57-165c98b1aa55"
@@ -66,9 +66,9 @@ platform :ios do
     expected_build   = get_build_number(xcodeproj: "DonsNotes.xcodeproj")
 
     build_id = nil
-    20.times do |i|
+    40.times do |i|
       sleep(30) if i > 0
-      UI.message("Poll #{i + 1}/20 — looking for version #{expected_version} build #{expected_build}...")
+      UI.message("Poll #{i + 1}/40 — looking for version #{expected_version} build #{expected_build}...")
       builds_json = sh(
         "curl -sf -H 'Authorization: Bearer #{ENV["ASC_JWT"]}' " \
         "'https://api.appstoreconnect.apple.com/v1/builds?filter[app]=#{app_id}&sort=-uploadedDate&limit=10' 2>&1",
@@ -94,7 +94,7 @@ platform :ios do
     end
 
     unless build_id
-      UI.error("Build did not appear in ASC within 10 minutes — run post-upload steps manually.")
+      UI.error("Build did not appear in ASC within 20 minutes — run post-upload steps manually.")
       next
     end
 
