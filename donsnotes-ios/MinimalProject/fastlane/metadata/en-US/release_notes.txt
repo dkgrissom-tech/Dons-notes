@@ -1,7 +1,7 @@
-Build 23 — Lumen Pro is now live
+Build 91 — Phone Call Interruption Detection
 
-• Real in-app purchases — subscribe to Pro or Lumen Pro directly in the app
-• Jarvis arc reactor ring: 3 concentric rotating arcs orbit the orb at all times — dim when idle, blazing when you're speaking
-• Tap-to-wake timing fixed — Daniel says "Yes." cleanly before listening for your question
-• API reliability improvements — AI responses work consistently on all devices
-• "Payments coming soon" is gone — it's here
+• Ora now detects when a cellular call starts mid-recording
+• A banner slides in: "Recording paused — phone call active"
+• Recording resumes automatically 0.8s after your call ends — no tap needed
+• Transcript is fully preserved across the interruption
+• Previously Ora would silently stop recording with no feedback — fixed
