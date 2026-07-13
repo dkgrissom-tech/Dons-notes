@@ -150,8 +150,8 @@ platform :ios do
 
       if status >= 200 && status < 300
         UI.success("  ✅ #{description} — HTTP #{status}")
-      elsif status == 409 && body.include?("already exists")
-        UI.important("  ⚠️  Already applied — HTTP 409 (ignoring)")
+      elsif status == 409 && (body.include?("already exists") || body.include?("already set") || body.include?("already assigned"))
+        UI.important("  ⚠️  Already applied — HTTP 409 (ignoring, this is expected on re-runs)")
       else
         UI.user_error!("❌ #{description} failed — HTTP #{status}\nResponse: #{body}")
       end
@@ -248,8 +248,8 @@ platform :ios do
       File.delete(status_file) rescue nil
       if status >= 200 && status < 300
         UI.success("  ✅ #{description} — HTTP #{status}")
-      elsif status == 409 && body.include?("already exists")
-        UI.important("  ⚠️  Already applied — HTTP 409 (ignoring)")
+      elsif status == 409 && (body.include?("already exists") || body.include?("already set") || body.include?("already assigned"))
+        UI.important("  ⚠️  Already applied — HTTP 409 (ignoring, this is expected on re-runs)")
       else
         UI.user_error!("❌ #{description} failed — HTTP #{status}\nResponse: #{body}")
       end
