@@ -1,0 +1,40 @@
+name: Backfill External TestFlight
+
+# Manually-triggered rescue for builds that uploaded but never got attached to
+# the external TestFlight group (e.g. Build 94 after the Fastfile filter bug).
+# Runs the fastlane :backfill_external lane, which finds the newest VALID build
+# and attaches it to internal + external groups.
+#
+# HOW TO RUN: GitHub → Actions → "Backfill External TestFlight" → Run workflow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: donsnotes-ios/MinimalProject
+
+      - name: Set up App Store Connect API Key file
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          printf "%s" "${{ secrets.APP_STORE_CONNECT_API_KEY }}" > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+          chmod 600 ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8
+
+      - name: Run Fastlane backfill lane
+        working-directory: donsnotes-ios/MinimalProject
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: bundle exec fastlane backfill_external

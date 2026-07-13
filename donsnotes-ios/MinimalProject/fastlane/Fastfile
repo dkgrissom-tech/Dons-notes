@@ -46,98 +46,231 @@ platform :ios do
       }
     )
 
+    # Wait for Apple to accept the upload before starting the post-upload poll.
+    # (skip_waiting was the reason we couldn't tell 'upload rejected' from 'still processing'.)
     upload_to_testflight(
       api_key: api_key,
-      skip_waiting_for_build_processing: true
+      skip_waiting_for_build_processing: false,
+      skip_submission: true
     )
 
     # ── Post-upload checklist (automated) ────────────────────────────────────
-    # Apple takes ~5 minutes to process the build before the API exposes it.
-    # We poll until it appears, then:
-    #   1. Set usesNonExemptEncryption = false  (clears MISSING_EXPORT_COMPLIANCE)
-    #   2. Add to internal TestFlight group     (aca5f162-a25f-4d25-ba57-165c98b1aa55)
-    #   3. Add to external TestFlight group     (03dff58c-e0bd-4276-b720-5fcd9dfde010)
-    UI.message("Waiting for Apple to process the build (polling every 30s, up to 20 min)...")
+    # 1. Poll until Apple reports the build as VALID
+    # 2. Set usesNonExemptEncryption = false  (clears MISSING_EXPORT_COMPLIANCE)
+    # 3. Add to internal TestFlight group
+    # 4. Add to external TestFlight group (Apple's Beta App Review still gates external release)
+    UI.message("Polling ASC for processed build (every 30s, up to 20 min)...")
 
     app_id           = "6777510925"
     internal_group   = "aca5f162-a25f-4d25-ba57-165c98b1aa55"
     external_group   = "03dff58c-e0bd-4276-b720-5fcd9dfde010"
-    expected_version = get_version_number(xcodeproj: "DonsNotes.xcodeproj", target: "DonsNotes")
-    expected_build   = get_build_number(xcodeproj: "DonsNotes.xcodeproj")
+    expected_build   = get_build_number(xcodeproj: "DonsNotes.xcodeproj").to_s
 
+    # Helper — regenerate a fresh JWT before every API call, so we never hit
+    # the 20-minute token expiry that killed Build 91's post-upload steps.
+    require "json"
+    require "base64"
+    require "openssl"
+
+    def fresh_jwt
+      key_id    = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+      issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"]
+      key_path  = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+      key_pem   = File.read(key_path)
+      key       = OpenSSL::PKey::EC.new(key_pem)
+
+      header  = { "alg" => "ES256", "kid" => key_id, "typ" => "JWT" }
+      now     = Time.now.to_i
+      payload = { "iss" => issuer_id, "iat" => now, "exp" => now + 1000, "aud" => "appstoreconnect-v1" }
+
+      encode = ->(hash) { Base64.urlsafe_encode64(JSON.dump(hash)).gsub("=", "") }
+      signing_input = "#{encode.call(header)}.#{encode.call(payload)}"
+      digest    = OpenSSL::Digest::SHA256.new
+      raw_sig   = key.dsa_sign_asn1(digest.digest(signing_input))
+      # DER → raw r||s (64 bytes) for JWT ES256
+      asn1      = OpenSSL::ASN1.decode(raw_sig)
+      r         = asn1.value[0].value.to_s(2).rjust(32, "\x00".b)
+      s         = asn1.value[1].value.to_s(2).rjust(32, "\x00".b)
+      signature = Base64.urlsafe_encode64(r + s).gsub("=", "")
+      "#{signing_input}.#{signature}"
+    end
+
+    # Poll for build using buildNumber sort — filter[version] is the version string,
+    # attributes.version is the *build number*, and we must compare strings.
     build_id = nil
     40.times do |i|
       sleep(30) if i > 0
-      UI.message("Poll #{i + 1}/40 — looking for version #{expected_version} build #{expected_build}...")
+      UI.message("Poll #{i + 1}/40 — searching for build #{expected_build}...")
+      jwt_poll = fresh_jwt
       builds_json = sh(
-        "curl -sf -H 'Authorization: Bearer #{ENV["ASC_JWT"]}' " \
-        "'https://api.appstoreconnect.apple.com/v1/builds?filter[app]=#{app_id}&sort=-uploadedDate&limit=10' 2>&1",
+        "curl -sf -H 'Authorization: Bearer #{jwt_poll}' " \
+        "'https://api.appstoreconnect.apple.com/v1/builds?filter%5Bapp%5D=#{app_id}&sort=-uploadedDate&limit=20' 2>&1",
         log: false
       ) rescue nil
       next unless builds_json
 
-      require "json"
       data = JSON.parse(builds_json) rescue nil
       next unless data && data["data"]
 
       match = data["data"].find do |b|
-        b.dig("attributes", "version") == expected_build.to_s &&
-          (b.dig("attributes", "processingState") == "VALID" ||
-           b.dig("attributes", "processingState") == "VALID_BUT_MISSING_USAGES")
+        b.dig("attributes", "version").to_s == expected_build &&
+          %w[VALID VALID_BUT_MISSING_USAGES PROCESSED].include?(b.dig("attributes", "processingState"))
       end
 
       if match
         build_id = match["id"]
-        UI.success("Build found: #{build_id}")
+        UI.success("Build #{expected_build} found (id: #{build_id}, state: #{match.dig('attributes', 'processingState')})")
         break
       end
     end
 
     unless build_id
-      UI.error("Build did not appear in ASC within 20 minutes — run post-upload steps manually.")
-      next
+      UI.user_error!("❌ Build #{expected_build} did not reach VALID in 20 minutes. CI will fail so this doesn't silently regress.")
     end
 
-    jwt = ENV["ASC_JWT"]
+    # Helper — API call that FAILS the pipeline if the response isn't 2xx/2xx-with-warnings.
+    # Prints Apple's actual error body instead of swallowing it with `|| true`.
+    def asc_call(method, url, body_json, description)
+      UI.message(description)
+      response_file = "/tmp/asc_response_#{Time.now.to_i}_#{rand(9999)}.json"
+      status_file   = "/tmp/asc_status_#{Time.now.to_i}_#{rand(9999)}.txt"
+      body_flag     = body_json ? "-d '#{body_json}'" : ""
+      sh(
+        "curl -s -o #{response_file} -w '%{http_code}' -X #{method} " \
+        "-H 'Authorization: Bearer #{fresh_jwt}' " \
+        "-H 'Content-Type: application/json' " \
+        "#{body_flag} " \
+        "'#{url}' > #{status_file}",
+        log: false
+      )
+      status = File.read(status_file).to_i
+      body   = File.read(response_file) rescue ""
+      File.delete(response_file) rescue nil
+      File.delete(status_file) rescue nil
+
+      if status >= 200 && status < 300
+        UI.success("  ✅ #{description} — HTTP #{status}")
+      elsif status == 409 && body.include?("already exists")
+        UI.important("  ⚠️  Already applied — HTTP 409 (ignoring)")
+      else
+        UI.user_error!("❌ #{description} failed — HTTP #{status}\nResponse: #{body}")
+      end
+    end
 
     # 1. Export compliance
-    UI.message("Setting usesNonExemptEncryption = false...")
-    sh(
-      "curl -sf -X PATCH " \
-      "-H 'Authorization: Bearer #{jwt}' " \
-      "-H 'Content-Type: application/json' " \
-      "-d '{\"data\":{\"type\":\"builds\",\"id\":\"#{build_id}\"," \
-          "\"attributes\":{\"usesNonExemptEncryption\":false}}}' " \
-      "'https://api.appstoreconnect.apple.com/v1/builds/#{build_id}' > /dev/null 2>&1 || true",
-      log: false
+    asc_call(
+      "PATCH",
+      "https://api.appstoreconnect.apple.com/v1/builds/#{build_id}",
+      %({"data":{"type":"builds","id":"#{build_id}","attributes":{"usesNonExemptEncryption":false}}}),
+      "Setting usesNonExemptEncryption = false"
     )
-    UI.success("Export compliance set.")
 
     # 2. Internal TestFlight group
-    UI.message("Adding to internal TestFlight group...")
-    sh(
-      "curl -sf -X POST " \
-      "-H 'Authorization: Bearer #{jwt}' " \
-      "-H 'Content-Type: application/json' " \
-      "-d '{\"data\":[{\"type\":\"builds\",\"id\":\"#{build_id}\"}]}' " \
-      "'https://api.appstoreconnect.apple.com/v1/betaGroups/#{internal_group}/relationships/builds' " \
-      "> /dev/null 2>&1 || true",
-      log: false
+    asc_call(
+      "POST",
+      "https://api.appstoreconnect.apple.com/v1/betaGroups/#{internal_group}/relationships/builds",
+      %({"data":[{"type":"builds","id":"#{build_id}"}]}),
+      "Adding to internal TestFlight group"
     )
-    UI.success("Added to internal group.")
 
     # 3. External TestFlight group
-    UI.message("Adding to external TestFlight group...")
-    sh(
-      "curl -sf -X POST " \
-      "-H 'Authorization: Bearer #{jwt}' " \
-      "-H 'Content-Type: application/json' " \
-      "-d '{\"data\":[{\"type\":\"builds\",\"id\":\"#{build_id}\"}]}' " \
-      "'https://api.appstoreconnect.apple.com/v1/betaGroups/#{external_group}/relationships/builds' " \
-      "> /dev/null 2>&1 || true",
+    asc_call(
+      "POST",
+      "https://api.appstoreconnect.apple.com/v1/betaGroups/#{external_group}/relationships/builds",
+      %({"data":[{"type":"builds","id":"#{build_id}"}]}),
+      "Adding to external TestFlight group"
+    )
+
+    UI.success("🎉 Post-upload checklist complete — build #{expected_build} attached to internal + external.")
+    UI.important("NOTE: External testers won't see the build until Apple's Beta App Review clears (usually <24h).")
+  end
+
+  desc "Backfill: attach the newest uploaded build to internal + external groups (used for orphaned Build 94)"
+  lane :backfill_external do
+    require "json"
+    require "base64"
+    require "openssl"
+
+    app_id         = "6777510925"
+    internal_group = "aca5f162-a25f-4d25-ba57-165c98b1aa55"
+    external_group = "03dff58c-e0bd-4276-b720-5fcd9dfde010"
+
+    def fresh_jwt
+      key_id    = ENV["APP_STORE_CONNECT_API_KEY_ID"]
+      issuer_id = ENV["APP_STORE_CONNECT_ISSUER_ID"]
+      key_path  = File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+      key       = OpenSSL::PKey::EC.new(File.read(key_path))
+      header  = { "alg" => "ES256", "kid" => key_id, "typ" => "JWT" }
+      now     = Time.now.to_i
+      payload = { "iss" => issuer_id, "iat" => now, "exp" => now + 1000, "aud" => "appstoreconnect-v1" }
+      encode = ->(hash) { Base64.urlsafe_encode64(JSON.dump(hash)).gsub("=", "") }
+      signing_input = "#{encode.call(header)}.#{encode.call(payload)}"
+      raw_sig = key.dsa_sign_asn1(OpenSSL::Digest::SHA256.new.digest(signing_input))
+      asn1    = OpenSSL::ASN1.decode(raw_sig)
+      r       = asn1.value[0].value.to_s(2).rjust(32, "\x00".b)
+      s       = asn1.value[1].value.to_s(2).rjust(32, "\x00".b)
+      signature = Base64.urlsafe_encode64(r + s).gsub("=", "")
+      "#{signing_input}.#{signature}"
+    end
+
+    UI.message("Fetching latest VALID build...")
+    builds_json = sh(
+      "curl -sf -H 'Authorization: Bearer #{fresh_jwt}' " \
+      "'https://api.appstoreconnect.apple.com/v1/builds?filter%5Bapp%5D=#{app_id}&sort=-uploadedDate&limit=20'",
       log: false
     )
-    UI.success("Added to external group. Post-upload checklist complete ✅")
+    data = JSON.parse(builds_json)
+    latest = data["data"].find do |b|
+      %w[VALID VALID_BUT_MISSING_USAGES PROCESSED].include?(b.dig("attributes", "processingState"))
+    end
+    UI.user_error!("No VALID builds found.") unless latest
+
+    build_id   = latest["id"]
+    build_num  = latest.dig("attributes", "version")
+    UI.success("Latest VALID build: #{build_num} (id: #{build_id})")
+
+    def asc_call(method, url, body_json, description)
+      UI.message(description)
+      response_file = "/tmp/asc_response_#{Time.now.to_i}_#{rand(9999)}.json"
+      status_file   = "/tmp/asc_status_#{Time.now.to_i}_#{rand(9999)}.txt"
+      body_flag     = body_json ? "-d '#{body_json}'" : ""
+      sh(
+        "curl -s -o #{response_file} -w '%{http_code}' -X #{method} " \
+        "-H 'Authorization: Bearer #{fresh_jwt}' " \
+        "-H 'Content-Type: application/json' " \
+        "#{body_flag} " \
+        "'#{url}' > #{status_file}",
+        log: false
+      )
+      status = File.read(status_file).to_i
+      body   = File.read(response_file) rescue ""
+      File.delete(response_file) rescue nil
+      File.delete(status_file) rescue nil
+      if status >= 200 && status < 300
+        UI.success("  ✅ #{description} — HTTP #{status}")
+      elsif status == 409 && body.include?("already exists")
+        UI.important("  ⚠️  Already applied — HTTP 409 (ignoring)")
+      else
+        UI.user_error!("❌ #{description} failed — HTTP #{status}\nResponse: #{body}")
+      end
+    end
+
+    asc_call("PATCH",
+      "https://api.appstoreconnect.apple.com/v1/builds/#{build_id}",
+      %({"data":{"type":"builds","id":"#{build_id}","attributes":{"usesNonExemptEncryption":false}}}),
+      "Setting usesNonExemptEncryption = false"
+    )
+    asc_call("POST",
+      "https://api.appstoreconnect.apple.com/v1/betaGroups/#{internal_group}/relationships/builds",
+      %({"data":[{"type":"builds","id":"#{build_id}"}]}),
+      "Adding build #{build_num} to internal TestFlight group"
+    )
+    asc_call("POST",
+      "https://api.appstoreconnect.apple.com/v1/betaGroups/#{external_group}/relationships/builds",
+      %({"data":[{"type":"builds","id":"#{build_id}"}]}),
+      "Adding build #{build_num} to external TestFlight group"
+    )
+    UI.success("🎉 Backfill complete for build #{build_num}. Beta App Review usually clears in <24h.")
   end
 
   desc "Submit to App Store for review"
