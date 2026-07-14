@@ -830,6 +830,18 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 }
             }
 
+            // Build 98: Speaker diarization — attribute transcript turns to attendee names
+            // Runs in parallel after summary; falls back gracefully if it fails.
+            var speakerTranscript: String? = nil
+            if !cleanTranscript.isEmpty {
+                let speakerNames = attendeesCopy.map { $0.name }.filter { !$0.isEmpty }
+                speakerTranscript = try? await GroqClient.diarizeTranscript(
+                    cleanTranscript,
+                    speakerNames: speakerNames,
+                    organizerName: organizer.isEmpty ? nil : organizer
+                )
+            }
+
             // Fall back to Ora Q&A insights if Groq summary failed
             if summary == nil && !insights.isEmpty {
                 summary = insights.map { "Q: \($0.question)\nA: \($0.answer)" }.joined(separator: "\n\n")
@@ -845,7 +857,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 organizerName: organizer.isEmpty ? nil : organizer,
                 createdAt: Date(),
                 actionItems: actionItems,
-                insights: insights.isEmpty ? nil : insights
+                insights: insights.isEmpty ? nil : insights,
+                speakerTranscript: speakerTranscript
             )
             await MainActor.run {
                 var saved = MeetingCacheService.shared.loadMeetings()
@@ -874,7 +887,12 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         body += "ORA INSIGHTS\n"
                         for i in ins { body += "Q: \(i.question)\nA: \(i.answer)\n\n" }
                     }
-                    if !cleanTranscript.isEmpty { body += "FULL TRANSCRIPT\n\(cleanTranscript)\n" }
+                    // Build 98: prefer speaker-attributed transcript in email; fall back to raw
+                    if let spk = speakerTranscript, !spk.isEmpty {
+                        body += "FULL TRANSCRIPT (Speaker Attributed)\n\(spk)\n"
+                    } else if !cleanTranscript.isEmpty {
+                        body += "FULL TRANSCRIPT\n\(cleanTranscript)\n"
+                    }
                     body += "\n— Sent via ORA · AI Meeting Intelligence"
                     let recipientEmails = attendeesCopy
                         .map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }

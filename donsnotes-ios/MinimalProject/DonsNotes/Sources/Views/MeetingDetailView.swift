@@ -272,15 +272,59 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                         }
                     }
 
-                    // MARK: Transcript
-                    if let transcript = meeting.transcript {
+                    // MARK: Transcript — Build 98: prefer speaker-attributed version
+                    if meeting.transcript != nil || meeting.speakerTranscript != nil {
                         LUMENCard {
                             VStack(alignment: .leading, spacing: 12) {
-                                LUMENSectionHeader(title: "Full Transcript", icon: "text.quote")
-                                Text(transcript)
-                                    .font(LM.Fonts.text(12))
-                                    .foregroundColor(LM.Colors.textTertiary)
-                                    .lineSpacing(6)
+                                // Header with speaker badge when diarized
+                                HStack(spacing: 8) {
+                                    LUMENSectionHeader(
+                                        title: meeting.speakerTranscript != nil ? "Transcript" : "Full Transcript",
+                                        icon: "text.quote"
+                                    )
+                                    if meeting.speakerTranscript != nil {
+                                        Text("SPEAKERS")
+                                            .font(LM.Fonts.text(9).weight(.semibold))
+                                            .foregroundColor(LM.Colors.cyan)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
+                                            .background(LM.Colors.cyan.opacity(0.12))
+                                            .cornerRadius(4)
+                                    }
+                                    Spacer()
+                                }
+                                // Speaker transcript: each "Name: text" line rendered with name highlighted
+                                if let spk = meeting.speakerTranscript {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        ForEach(Array(spk.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                                            if let colonIdx = line.firstIndex(of: ":") {
+                                                let name = String(line[line.startIndex..<colonIdx])
+                                                let rest = String(line[line.index(after: colonIdx)...]).trimmingCharacters(in: .whitespaces)
+                                                HStack(alignment: .top, spacing: 6) {
+                                                    Text(name)
+                                                        .font(LM.Fonts.text(11).weight(.semibold))
+                                                        .foregroundColor(LM.Colors.cyan)
+                                                        .frame(minWidth: 60, alignment: .trailing)
+                                                    Text(rest)
+                                                        .font(LM.Fonts.text(12))
+                                                        .foregroundColor(LM.Colors.textSecondary)
+                                                        .lineSpacing(4)
+                                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                                }
+                                            } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                                                Text(line)
+                                                    .font(LM.Fonts.text(12))
+                                                    .foregroundColor(LM.Colors.textTertiary)
+                                                    .lineSpacing(4)
+                                            }
+                                        }
+                                    }
+                                } else if let transcript = meeting.transcript {
+                                    Text(transcript)
+                                        .font(LM.Fonts.text(12))
+                                        .foregroundColor(LM.Colors.textTertiary)
+                                        .lineSpacing(6)
+                                }
                             }
                         }
                     }

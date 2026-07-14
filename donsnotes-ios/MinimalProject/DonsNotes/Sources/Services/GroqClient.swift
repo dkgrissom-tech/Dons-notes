@@ -133,7 +133,69 @@ enum GroqClient {
         return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    // MARK: - Speaker Diarization
+
+    /// Takes a raw flat transcript and a list of known speaker names and returns
+    /// the same content re-formatted as attributed turns: "Name: sentence(s)".
+    /// Falls back to the original transcript if the model can't diarize.
+    static func diarizeTranscript(
+        _ transcript: String,
+        speakerNames: [String],
+        organizerName: String?
+    ) async throws -> String {
+        guard !transcript.isEmpty else { return transcript }
+
+        let allNames: [String] = {
+            var names = speakerNames.filter { !$0.isEmpty }
+            if let org = organizerName, !org.isEmpty, !names.contains(org) {
+                names.insert(org, at: 0)
+            }
+            return names
+        }()
+
+        // If we have no names at all, use generic Speaker A / Speaker B
+        let speakerList = allNames.isEmpty
+            ? "Speaker A, Speaker B"
+            : allNames.joined(separator: ", ")
+
+        let system = """
+        You are a meeting transcript analyst. You will receive a raw single-channel meeting transcript and a list of people who were in the meeting.
+
+        Your job: split the transcript into speaker turns and attribute each turn to the most likely speaker based on context clues (questions vs answers, topic ownership, personal pronouns, names mentioned, etc.).
+
+        Rules:
+        - Format EVERY line as "Name: text" with no blank lines between turns from the same speaker.
+        - Consecutive sentences by the same speaker stay in one turn.
+        - When the speaker clearly changes, start a new line with the new speaker's name.
+        - Only use names from the provided list. If genuinely uncertain, use "Unknown".
+        - Do NOT add commentary, headers, or any text outside the attributed turns.
+        - Do NOT change the wording of the transcript — only add speaker labels.
+        """
+
+        let user = """
+        Speakers present: \(speakerList)
+
+        Raw transcript:
+        \(transcript.prefix(80000))
+        """
+
+        let result = try await chat(
+            messages: [
+                .init(role: "system", content: system),
+                .init(role: "user", content: user)
+            ],
+            temperature: 0.1,
+            timeoutSeconds: 40
+        )
+
+        let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Sanity check — if result looks totally wrong, fall back
+        guard !trimmed.isEmpty, trimmed.contains(":") else { return transcript }
+        return trimmed
+    }
+
     // MARK: - Shared response validator
+
 
     private static func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
