@@ -32,6 +32,8 @@
         AA000000100000006 /* LUMENService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000100000002 /* LUMENService.swift */; };
         AA000000100000007 /* LUMENOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000100000003 /* LUMENOrbView.swift */; };
         AA000000100000008 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA000000100000004 /* OnboardingView.swift */; };
+        CC000000100000001 /* AskOraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000100000101 /* AskOraView.swift */; };
+        CC000000100000002 /* OraHelpView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC000000100000102 /* OraHelpView.swift */; };
         110000012C100001000001A3 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 110000012C1000010000013F /* Assets.xcassets */; };
         BB000000100000001 /* GroqClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000100000101 /* GroqClient.swift */; };
         BB000000100000002 /* GroqUsageTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000100000102 /* GroqUsageTracker.swift */; };
@@ -64,6 +66,8 @@
         AA000000100000002 /* LUMENService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LUMENService.swift; sourceTree = "<group>"; };
         AA000000100000003 /* LUMENOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LUMENOrbView.swift; sourceTree = "<group>"; };
         AA000000100000004 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+        CC000000100000101 /* AskOraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AskOraView.swift; sourceTree = "<group>"; };
+        CC000000100000102 /* OraHelpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OraHelpView.swift; sourceTree = "<group>"; };
         110000012C1000010000013F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
         110000012C10000100000140 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info.plist"; sourceTree = "<group>"; };
         110000012C100001000000C8 /* DonsNotes.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DonsNotes.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -169,6 +173,8 @@
                 110000012C1000010000013E /* RecordingView.swift */,
                 AA000000100000003 /* LUMENOrbView.swift */,
                 AA000000100000004 /* OnboardingView.swift */,
+                CC000000100000101 /* AskOraView.swift */,
+                CC000000100000102 /* OraHelpView.swift */,
 
             );
             path = Views;
@@ -287,6 +293,8 @@
                 AA000000100000006 /* LUMENService.swift in Sources */,
                 AA000000100000007 /* LUMENOrbView.swift in Sources */,
                 AA000000100000008 /* OnboardingView.swift in Sources */,
+                CC000000100000001 /* AskOraView.swift in Sources */,
+                CC000000100000002 /* OraHelpView.swift in Sources */,
             );
             runOnlyForDeploymentPostprocessing = 0;
         };
