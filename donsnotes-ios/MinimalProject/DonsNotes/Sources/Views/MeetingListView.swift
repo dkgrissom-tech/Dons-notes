@@ -19,6 +19,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     @State private var showArchived: Bool = false
     @State private var pendingDeleteMeeting: Meeting? = nil
     @State private var isShowingAskOra = false
+    @State private var isShowingHelp = false
 
     var filteredMeetings: [Meeting] {
         // Build 91: respect the archived toggle
@@ -225,13 +226,21 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                     }
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: refresh) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(LM.Fonts.text(14))
-                            .foregroundColor(isLoading ? LM.Colors.cyan : LM.Colors.textSecondary)
+                    HStack(spacing: 14) {
+                        Button(action: refresh) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(LM.Fonts.text(14))
+                                .foregroundColor(isLoading ? LM.Colors.cyan : LM.Colors.textSecondary)
+                        }
+                        .rotationEffect(.degrees(isLoading ? 360 : 0))
+                        .animation(isLoading ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isLoading)
+                        // Tutorial — How to use Ora
+                        Button(action: { isShowingHelp = true }) {
+                            Image(systemName: "questionmark.circle")
+                                .font(LM.Fonts.text(17))
+                                .foregroundColor(LM.Colors.textSecondary)
+                        }
                     }
-                    .rotationEffect(.degrees(isLoading ? 360 : 0))
-                    .animation(isLoading ? Animation.linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isLoading)
                 }
             }
             .sheet(isPresented: $isShowingRecording, onDismiss: refresh) {
@@ -241,6 +250,13 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                 AskOraView(meetings: meetings)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $isShowingHelp) {
+                NavigationView {
+                    OraHelpView()
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isShowingProfile) {
                 ProfileView()
