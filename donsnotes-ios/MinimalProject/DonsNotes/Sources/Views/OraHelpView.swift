@@ -164,6 +164,9 @@ struct OraHelpView: View {
                                 HelpStep(icon: "doc.text.fill", color: LM.Colors.textTertiary,
                                          title: "Full transcript",
                                          detail: "Every word, scrollable. Long-press any text to copy a passage. Use the search bar on the meetings list to find specific words across all your meetings."),
+                                HelpStep(icon: "person.2.fill", color: LM.Colors.cyan,
+                                         title: "Speaker ID",
+                                         detail: "When attendees are added before the meeting, Ora automatically identifies who said what. The transcript shows each turn as \"Name: text\" with names highlighted in cyan — and a SPEAKERS badge appears at the top of the transcript card. The recap email also sends the attributed version so everyone sees who said what."),
                             ]
                         )
 
@@ -220,7 +223,7 @@ struct OraHelpView: View {
                             steps: [
                                 HelpStep(icon: "envelope.fill", color: LM.Colors.cyan,
                                          title: "Send Recap Email",
-                                         detail: "Sends the full meeting recap — summary, action items, Ora Insights, and transcript — to all attendees. Tap Resend Recap if you need to send it again."),
+                                         detail: "Sends the full meeting recap — summary, action items, Ora Insights, and transcript — to all attendees. When Speaker ID ran successfully, the email includes an attributed transcript (\"Name: text\" format) so recipients know who said what. Tap Resend Recap if you need to send it again."),
                                 HelpStep(icon: "wand.and.stars", color: LM.Colors.cyan,
                                          title: "Draft Follow-Up Email",
                                          detail: "Ora writes a professional follow-up email (~200 words) using your action items and meeting summary. Tap it and Mail opens with the To: field already filled in from your attendees. Edit before sending."),
@@ -305,6 +308,7 @@ struct OraHelpView: View {
                                 TipRow(text: "Draft Follow-Up Email is fastest way to send action items after a client call.")
                                 TipRow(text: "Ask Ora (brain icon) is your meeting memory — use it before any follow-up to catch what was decided.")
                                 TipRow(text: "Rename meetings right after they end — it makes search much more useful over time.")
+                                TipRow(text: "Add attendees before recording so Speaker ID can label who said what in your transcript and recap email.")
                             }
                         }
                     }
