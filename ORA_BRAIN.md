@@ -14,7 +14,7 @@
 | **GitHub repo** | https://github.com/dkgrissom-tech/Dons-notes |
 | **Local clone** | `/tmp/Dons-notes-work/` |
 | **TestFlight** | https://testflight.apple.com/join/5YckE6M7 |
-| **Current build** | 91 |
+| **Current build** | 96 |
 | **Trigger word** | `"ora"` — say it mid-meeting to activate AI |
 | **AI voice** | Daniel (ElevenLabs) — British male |
 | **AI backend** | Groq `llama-3.3-70b-versatile` — FREE for all users, zero cost per user |
@@ -160,7 +160,14 @@ The Fastfile `beta` lane handles all post-upload steps automatically after every
 
 ## 8. Known Bugs & Current Status
 
-### Current build: 91
+### Current build: 96
+
+**Build 96 (July 13, 2026) — High-Value Feature Drop:**
+- **Ask Ora (cross-meeting memory)** — Brain icon in toolbar opens `AskOraView`. Searches across all completed meetings using Groq llama-3.3-70b. Includes suggested prompts, conversation history, and per-turn answers. New file: `Sources/Views/AskOraView.swift`.
+- **Pre-meeting brief** — When attendees are added (via quick-add, manual, or repeat meeting), Ora automatically looks up the most recent past meeting those attendees were in and shows a collapsible card with the date, summary snippet, and open action items. Updates live as attendees change.
+- **Draft Follow-Up Email** — New "Draft Follow-Up Email" button (wand icon) in MeetingDetailView action buttons. Appears only when action items exist. Uses Groq to write a professional follow-up email (~200 words), then opens Mail/share sheet with To: pre-populated from attendee emails. Falls back to plain text share if Groq fails.
+
+### Build 91
 - **Phone call interruption** — Fixed in B91. CTCallCenter monitors cellular calls. Banner shown when call active. Auto-resumes 0.8s after call ends.
 - **Silent fail on cellular calls** — Fixed in B91. Previously: iOS killed audio session with no user feedback. Now: banner + auto-resume.
 

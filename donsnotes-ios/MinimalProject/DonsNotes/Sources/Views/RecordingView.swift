@@ -35,6 +35,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @FocusState private var emailFieldFocused: Bool
     @Environment(\.dismiss) var dismiss
 
+    // Build 96: Pre-meeting brief
+    @State private var preMeetingBrief: Meeting? = nil
+    @State private var briefExpanded: Bool = false
+
     private var elapsedFormatted: String {
         let m = elapsedSeconds / 60
         let s = elapsedSeconds % 60
@@ -104,6 +108,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 // Seed attendees from a repeated meeting — only if not already populated
                 if attendees.isEmpty && !preloadedAttendees.isEmpty {
                     attendees = preloadedAttendees
+                    updatePreMeetingBrief() // Build 96: show brief for preloaded attendees
                 }
             }
             // Transcript observer on the stable OUTER view. The full cumulative transcript
@@ -276,6 +281,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 }
 
                 Spacer(minLength: 20)
+
+                // Build 96: Pre-meeting brief
+                if let brief = preMeetingBrief {
+                    preMeetingBriefCard(brief)
+                        .padding(.horizontal, LM.Space.md)
+                        .transition(.opacity)
+                }
 
                 HStack(spacing: 8) {
                     Image(systemName: "sparkles").font(LM.Fonts.text(12)).foregroundColor(LM.Colors.cyan)
@@ -637,6 +649,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
         }
         newAttendeeEmail = ""
         newAttendeeName = ""
+        updatePreMeetingBrief() // Build 96
     }
 
     func presentRecapSheet(text: String, recipients: [String] = [], subject: String = "") {
@@ -694,6 +707,93 @@ struct RecordingView<T: APIServiceProtocol>: View {
     func toggleAttendee(_ contact: Attendee) {
         if let i = attendees.firstIndex(where: { $0.email == contact.email }) { attendees.remove(at: i) }
         else { attendees.append(contact) }
+        updatePreMeetingBrief()
+    }
+
+    // Build 96: Pre-meeting brief — find the most recent past meeting that includes any current attendee
+    func updatePreMeetingBrief() {
+        guard !attendees.isEmpty else { withAnimation { preMeetingBrief = nil }; return }
+        let emails = Set(attendees.map { $0.email.lowercased() })
+        let all = MeetingCacheService.shared.loadMeetings()
+        let match = all
+            .filter { ($0.status == .completed || $0.status == .sent) }
+            .filter { m in m.attendees.contains(where: { emails.contains($0.email.lowercased()) }) }
+            .sorted { $0.createdAt > $1.createdAt }
+            .first
+        withAnimation { preMeetingBrief = match }
+    }
+
+    // Build 96: Pre-meeting brief card UI
+    @ViewBuilder
+    func preMeetingBriefCard(_ meeting: Meeting) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header — tap to expand/collapse
+            Button(action: { withAnimation(.spring(response: 0.3)) { briefExpanded.toggle() } }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 12))
+                        .foregroundColor(LM.Colors.cyan)
+                    Text("LAST MEETING — \(meeting.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(LM.Fonts.mono(10, weight: .bold))
+                        .foregroundColor(LM.Colors.cyan)
+                        .tracking(1)
+                    Spacer()
+                    Image(systemName: briefExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11))
+                        .foregroundColor(LM.Colors.textTertiary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            if briefExpanded {
+                Divider().background(LM.Colors.borderCyan.opacity(0.4))
+
+                VStack(alignment: .leading, spacing: 8) {
+                    // Attendees who overlap
+                    let names = meeting.attendees.map { $0.name }.joined(separator: ", ")
+                    if !names.isEmpty {
+                        Label(names, systemImage: "person.2")
+                            .font(LM.Fonts.text(12))
+                            .foregroundColor(LM.Colors.textSecondary)
+                    }
+
+                    // Summary snippet
+                    if let summary = meeting.summary {
+                        Text(summary.prefix(320) + (summary.count > 320 ? "..." : ""))
+                            .font(LM.Fonts.text(12))
+                            .foregroundColor(LM.Colors.textTertiary)
+                            .lineSpacing(4)
+                    }
+
+                    // Action items still open
+                    if let items = meeting.actionItems, !items.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Open Action Items")
+                                .font(LM.Fonts.mono(9, weight: .bold))
+                                .foregroundColor(LM.Colors.cyan)
+                                .tracking(1)
+                            ForEach(items.prefix(3), id: \.self) { item in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Circle().fill(LM.Colors.cyan).frame(width: 4, height: 4).padding(.top, 5)
+                                    Text(item)
+                                        .font(LM.Fonts.text(12))
+                                        .foregroundColor(LM.Colors.textSecondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+            }
+        }
+        .background(LM.Colors.surface)
+        .cornerRadius(LM.Radius.sm)
+        .overlay(RoundedRectangle(cornerRadius: LM.Radius.sm)
+            .stroke(LM.Colors.borderCyan.opacity(0.6), lineWidth: 1))
     }
 
     func uploadMeeting(url: URL) {

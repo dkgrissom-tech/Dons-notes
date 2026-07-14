@@ -18,6 +18,7 @@ struct MeetingListView<T: APIServiceProtocol>: View {
     // Build 91: archive view + delete confirmation
     @State private var showArchived: Bool = false
     @State private var pendingDeleteMeeting: Meeting? = nil
+    @State private var isShowingAskOra = false
 
     var filteredMeetings: [Meeting] {
         // Build 91: respect the archived toggle
@@ -199,6 +200,12 @@ struct MeetingListView<T: APIServiceProtocol>: View {
                                 .font(LM.Fonts.text(17))
                                 .foregroundColor(showArchived ? LM.Colors.cyan : LM.Colors.textSecondary)
                         }
+                        // Ask Ora — cross-meeting memory
+                        Button(action: { isShowingAskOra = true }) {
+                            Image(systemName: "brain.head.profile")
+                                .font(LM.Fonts.text(17))
+                                .foregroundColor(LM.Colors.cyan)
+                        }
                         Button(action: { isShowingProfile = true }) {
                             Image(systemName: "person.circle")
                                 .font(LM.Fonts.text(17))
@@ -229,6 +236,11 @@ struct MeetingListView<T: APIServiceProtocol>: View {
             }
             .sheet(isPresented: $isShowingRecording, onDismiss: refresh) {
                 RecordingView(apiService: apiService)
+            }
+            .sheet(isPresented: $isShowingAskOra) {
+                AskOraView(meetings: meetings)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $isShowingProfile) {
                 ProfileView()

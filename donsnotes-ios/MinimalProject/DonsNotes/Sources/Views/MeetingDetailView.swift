@@ -15,6 +15,9 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
     @State private var isSendingEmail = false
     @State private var emailSentConfirmation = false
     @State private var isShowingRepeatMeeting = false
+    // Build 96: auto-draft follow-up email
+    @State private var isDraftingFollowUp = false
+    @State private var followUpDraftReady = false
 
     // Build 90: editable meeting title
     @State private var isEditingTitle = false
@@ -286,6 +289,16 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                     if meeting.status == .completed || meeting.status == .sent {
                         VStack(spacing: 10) {
                             LUMENButton(title: "Share Meeting Notes", icon: "square.and.arrow.up", style: .secondary, action: exportMeeting)
+                            // Build 96: Draft follow-up email from action items
+                            if let items = meeting.actionItems, !items.isEmpty {
+                                LUMENButton(
+                                    title: isDraftingFollowUp ? "Drafting..." : "Draft Follow-Up Email",
+                                    icon: isDraftingFollowUp ? "ellipsis" : "wand.and.stars",
+                                    style: .ghost,
+                                    action: draftFollowUpEmail
+                                )
+                                .disabled(isDraftingFollowUp)
+                            }
                             LUMENButton(
                                 title: isSendingEmail ? "Sending..."
                                     : emailSentConfirmation ? "Summary Sent!"
@@ -338,6 +351,66 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                 let updated = try await apiService.fetchMeetingDetails(id: meeting.id)
                 await MainActor.run { self.meeting = updated }
             } catch {}
+        }
+    }
+
+    // Build 96: Generate a professional follow-up email from action items using Groq
+    func draftFollowUpEmail() {
+        guard let items = meeting.actionItems, !items.isEmpty else { return }
+        isDraftingFollowUp = true
+
+        Task {
+            let date = meeting.createdAt.formatted(date: .abbreviated, time: .omitted)
+            let attendeeNames = meeting.attendees.map { $0.name }.joined(separator: ", ")
+            let actionList = items.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+            let summary = meeting.summary ?? "(no summary)"
+
+            let prompt = """
+Write a professional, concise follow-up email for a meeting that occurred on \(date).
+Attendees: \(attendeeNames.isEmpty ? "Not specified" : attendeeNames)
+
+Meeting summary: \(summary)
+
+Action items:
+\(actionList)
+
+Write ONLY the email body (no Subject: line, no extra commentary).
+Keep it under 200 words. Be warm but professional.
+End with a line break then: — Sent via Ora
+"""
+
+            do {
+                let draft = try await GroqClient.chat(messages: [
+                    .init(role: "system", content: "You are a professional email writer. Write clear, concise follow-up emails."),
+                    .init(role: "user", content: prompt)
+                ], temperature: 0.4, timeoutSeconds: 20)
+
+                let subject = "Follow-Up: Meeting on \(date)"
+                let recipients = meeting.attendees
+                    .map { $0.email.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+
+                await MainActor.run {
+                    isDraftingFollowUp = false
+                    if !recipients.isEmpty {
+                        let to = recipients.joined(separator: ",")
+                        let encodedSub = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                        let encodedBody = draft.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+                        if let mailURL = URL(string: "mailto:\(to)?subject=\(encodedSub)&body=\(encodedBody)") {
+                            presentShareSheet(items: [mailURL])
+                            return
+                        }
+                    }
+                    presentShareSheet(items: ["\(subject)\n\n\(draft)"])
+                }
+            } catch {
+                await MainActor.run {
+                    isDraftingFollowUp = false
+                    // Fall back to plain share of action items if Groq fails
+                    let fallback = "Follow-Up Items from \(date):\n\n\(actionList)\n\n— Sent via Ora"
+                    presentShareSheet(items: [fallback])
+                }
+            }
         }
     }
 
