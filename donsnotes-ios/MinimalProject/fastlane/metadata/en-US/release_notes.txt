@@ -1,7 +1,11 @@
-Build 100 — Blank Recap Fix + Audio Export (critical)
+Build 100 — Reliability + Audio Export (critical)
 
-• FIXED: If a phone call interrupted a meeting, the recap email was blank and the transcript was empty. Cause: the audio engine restart after the call was clearing everything captured before the call.
-• The transcript now truly survives phone calls, Siri, alarms, and AirPods swaps — matching what Build 91 was supposed to do.
-• NEW: "Share Audio File" button on every meeting detail view. AirDrop, email, or save the raw recording to iCloud Drive — perfect for recovering older meetings that came back with a blank recap, or handing audio off for external transcription.
-• If you experienced a blank recap before this build, your audio file was still saved on-device — open the meeting, tap "Share Audio File", and back it up to your Mac or iCloud immediately.
-• No other functional changes. Speaker ID, Ask Ora, and follow-up emails continue to work as in Build 99.
+ORA WILL NEVER SILENTLY LOSE A MEETING AGAIN.
+
+• FIXED: Transcript now truly survives phone calls, Siri, alarms, and AirPods swaps — the audio engine restart no longer wipes what was captured before the interruption.
+• FIXED: The recording timer used to keep counting even when audio capture had died. Now the counter is gated on real audio buffers arriving at the mic. If capture stops, the counter freezes.
+• FIXED: When a declined phone call killed the audio session, Ora used to pretend everything was fine. Now Ora tries 3 escalating retries to restart the engine (0.8s / 1.5s / 2.5s). If all fail, a RED alarm banner appears with a haptic buzz — no more silent failures.
+• NEW: Every-second recording health check. If audio dies for any reason (background kill, mic fault, USB disconnect), you'll see a red "RECORDING STOPPED" banner within 5 seconds with two options: SAVE WHAT'S CAPTURED (finalize the meeting with the partial transcript) or RETRY (reboot the engine).
+• NEW: "Share Audio File" button on every meeting detail view. AirDrop, email, or save the raw recording to iCloud Drive — perfect for recovering older meetings, or handing audio off for external transcription.
+• If you experienced a blank recap before this build, your audio file is still saved on-device — open the meeting, tap "Share Audio File", and back it up immediately.
+• No other functional changes. Speaker ID, Ask Ora, and follow-up emails work as in Build 99.

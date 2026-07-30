@@ -27,6 +27,19 @@ final class SpeechRecognizerService: ObservableObject {
     @Published var recordingURL: URL? = nil
     @Published var error: String?
 
+    // Build 100: Proof-of-life timestamp — updated on every audio buffer that
+    // actually reaches the engine tap. RecordingView polls isCapturingAudio
+    // every second to detect a silently-dead engine (e.g. after a phone call
+    // interruption where iOS didn't release the audio session cleanly).
+    var lastAudioBufferAt: Date? = nil
+
+    /// True when audio buffers arrived in the last ~3 seconds while listening.
+    /// A false value while isListening=true means the engine is dead.
+    var isCapturingAudio: Bool {
+        guard isListening, let last = lastAudioBufferAt else { return false }
+        return Date().timeIntervalSince(last) < 3.0
+    }
+
     private var audioFile: AVAudioFile?
     private var recordingOutputURL: URL?
 
@@ -95,6 +108,7 @@ final class SpeechRecognizerService: ObservableObject {
         recognitionTask = nil
         isListening = false
         audioLevel = 0
+        lastAudioBufferAt = nil  // Build 100: reset proof-of-life on clean stop
         // Close the file and surface its URL for upload.
         audioFile = nil
         if let url = recordingOutputURL {
@@ -191,6 +205,9 @@ final class SpeechRecognizerService: ObservableObject {
         inputNode.removeTap(onBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
+            // Build 100: proof-of-life timestamp so RecordingView can detect a dead
+            // audio engine. Any real audio buffer arriving here updates it.
+            self.lastAudioBufferAt = Date()
             // 1. feed recognizer
             self.recognitionRequest?.append(buffer)
             // 2. write to file
