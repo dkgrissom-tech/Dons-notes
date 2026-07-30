@@ -1,7 +1,6 @@
-Build 91 — Phone Call Interruption Detection
+Build 100 — Blank Recap Fix (critical)
 
-• Ora now detects when a cellular call starts mid-recording
-• A banner slides in: "Recording paused — phone call active"
-• Recording resumes automatically 0.8s after your call ends — no tap needed
-• Transcript is fully preserved across the interruption
-• Previously Ora would silently stop recording with no feedback — fixed
+• FIXED: If a phone call interrupted a meeting, the recap email was blank and the transcript was empty. Cause: the audio engine restart after the call was clearing everything captured before the call.
+• The transcript now truly survives phone calls, Siri, alarms, and AirPods swaps — matching what Build 91 was supposed to do.
+• If you experienced a blank recap before this build, your audio file was still saved on-device — long-press the meeting in the list to re-open it.
+• No other functional changes in this build. Speaker ID, Ask Ora, and follow-up emails all continue to work as in Build 99.

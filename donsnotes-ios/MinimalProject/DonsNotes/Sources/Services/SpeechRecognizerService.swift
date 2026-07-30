@@ -35,13 +35,18 @@ final class SpeechRecognizerService: ObservableObject {
 
     // MARK: - Public API
 
-    func startListening() {
+    func startListening(resume: Bool = false) {
         // Refuse re-entry.
         guard !isListening else { return }
 
-        fullTranscript = ""
-        transcript = ""
-        recordingURL = nil
+        // Build 100: When resuming after an interruption (phone call, Siri, alarm, AirPods),
+        // DO NOT clear the transcript — we want to preserve everything captured before the
+        // interruption. Only fresh recording starts (resume=false) should wipe state.
+        if !resume {
+            fullTranscript = ""
+            transcript = ""
+            recordingURL = nil
+        }
         recordingOutputURL = makeOutputURL()
 
         // Step 1: Microphone permission (iOS 14+ compatible).

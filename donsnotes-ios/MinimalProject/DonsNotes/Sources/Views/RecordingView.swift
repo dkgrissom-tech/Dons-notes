@@ -566,7 +566,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     if options.contains(.shouldResume), resumeAfterInterruption {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             if !speechService.isListening {
-                                speechService.startListening()
+                                // Build 100: resume=true preserves the transcript captured
+                                // before the interruption (Siri / alarm / AirPods).
+                                speechService.startListening(resume: true)
                             }
                         }
                     }
@@ -597,7 +599,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         // Give iOS 0.8s to fully release the audio session after the call.
                         try? await Task.sleep(nanoseconds: 800_000_000)
                         if !speechService.isListening {
-                            speechService.startListening()
+                            // Build 100: resume=true preserves the pre-call transcript.
+                            // This is the fix for the blank-recap bug when a phone call
+                            // interrupted a live meeting recording.
+                            speechService.startListening(resume: true)
                         }
                     }
                 default:
