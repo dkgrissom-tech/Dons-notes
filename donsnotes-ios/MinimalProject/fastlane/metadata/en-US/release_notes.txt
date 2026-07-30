@@ -1,6 +1,7 @@
-Build 100 — Blank Recap Fix (critical)
+Build 100 — Blank Recap Fix + Audio Export (critical)
 
 • FIXED: If a phone call interrupted a meeting, the recap email was blank and the transcript was empty. Cause: the audio engine restart after the call was clearing everything captured before the call.
 • The transcript now truly survives phone calls, Siri, alarms, and AirPods swaps — matching what Build 91 was supposed to do.
-• If you experienced a blank recap before this build, your audio file was still saved on-device — long-press the meeting in the list to re-open it.
-• No other functional changes in this build. Speaker ID, Ask Ora, and follow-up emails all continue to work as in Build 99.
+• NEW: "Share Audio File" button on every meeting detail view. AirDrop, email, or save the raw recording to iCloud Drive — perfect for recovering older meetings that came back with a blank recap, or handing audio off for external transcription.
+• If you experienced a blank recap before this build, your audio file was still saved on-device — open the meeting, tap "Share Audio File", and back it up to your Mac or iCloud immediately.
+• No other functional changes. Speaker ID, Ask Ora, and follow-up emails continue to work as in Build 99.

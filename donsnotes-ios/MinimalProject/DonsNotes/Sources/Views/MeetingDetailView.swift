@@ -333,6 +333,11 @@ struct MeetingDetailView<T: APIServiceProtocol>: View {
                     if meeting.status == .completed || meeting.status == .sent {
                         VStack(spacing: 10) {
                             LUMENButton(title: "Share Meeting Notes", icon: "square.and.arrow.up", style: .secondary, action: exportMeeting)
+                            // Build 100: Share the raw audio file so users can AirDrop / email it,
+                            // recover it after a bad recap, or hand it off for external transcription.
+                            if audioFileExists {
+                                LUMENButton(title: "Share Audio File", icon: "waveform.badge.plus", style: .ghost, action: exportAudio)
+                            }
                             // Build 96: Draft follow-up email from action items
                             if let items = meeting.actionItems, !items.isEmpty {
                                 LUMENButton(
@@ -532,6 +537,29 @@ End with a line break then: — Sent via Ora
         if let storedInsights = meeting.insights, !storedInsights.isEmpty { t += "\nORA INSIGHTS\n"; for ins in storedInsights { t += "Q: \(ins.question)\nA: \(ins.answer)\n\n" } }
         if let tr = meeting.transcript { t += "\nFULL TRANSCRIPT\n\(tr)\n" }
         presentShareSheet(items: [t])
+    }
+
+    // Build 100: Read-only computed property — true if the meeting's local .m4a
+    // still exists on disk. The Documents folder is sandboxed to this app so a
+    // shared file is always a COPY; the original is never moved or deleted here.
+    var audioFileExists: Bool {
+        guard let urlStr = meeting.audioUrl,
+              let url = URL(string: urlStr),
+              url.isFileURL else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    // Build 100: Share the raw .m4a audio file via the iOS share sheet. Users
+    // can AirDrop it to their Mac, save to Files/iCloud Drive, or email it —
+    // useful for recovering a meeting whose recap came back blank, or for
+    // running external transcription. iOS shares a COPY; the on-device file
+    // stays untouched.
+    func exportAudio() {
+        guard let urlStr = meeting.audioUrl,
+              let url = URL(string: urlStr),
+              url.isFileURL,
+              FileManager.default.fileExists(atPath: url.path) else { return }
+        presentShareSheet(items: [url])
     }
 
     func sendChatMessage() {
