@@ -501,10 +501,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             Button {
                                 // Save what we have — route through stopRecording so the
                                 // partial transcript flows into uploadMeeting and the
-                                // audio file gets closed cleanly.
+                                // audio file gets closed cleanly. stopRecording() sets
+                                // speechService.recordingURL to the finalized m4a, which
+                                // uploadMeeting needs as its input.
                                 recordingHealthAlarm = false
                                 stopRecording()
-                                Task { await uploadMeeting() }
+                                if let url = speechService.recordingURL {
+                                    uploadMeeting(url: url)
+                                }
                             } label: {
                                 Text("SAVE WHAT'S CAPTURED")
                                     .font(LM.Fonts.mono(11, weight: .bold))
