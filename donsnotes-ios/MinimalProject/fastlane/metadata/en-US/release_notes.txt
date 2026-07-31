@@ -1,7 +1,12 @@
-Build 91 — Phone Call Interruption Detection
+Build 100 — Reliability + Audio Export (critical)
 
-• Ora now detects when a cellular call starts mid-recording
-• A banner slides in: "Recording paused — phone call active"
-• Recording resumes automatically 0.8s after your call ends — no tap needed
-• Transcript is fully preserved across the interruption
-• Previously Ora would silently stop recording with no feedback — fixed
+ORA WILL NEVER SILENTLY LOSE A MEETING AGAIN.
+
+• FIXED: Transcript now truly survives phone calls, Siri, alarms, and AirPods swaps — the audio engine restart no longer wipes what was captured before the interruption.
+• FIXED: The recording timer used to keep counting even when audio capture had died. Now the counter is gated on real audio buffers arriving at the mic. If capture stops, the counter freezes.
+• FIXED: When a declined phone call killed the audio session, Ora used to pretend everything was fine. Now Ora tries 3 escalating retries to restart the engine (0.8s / 1.5s / 2.5s). If all fail, a RED alarm banner appears with a haptic buzz — no more silent failures.
+• NEW: Every-second recording health check. If audio dies for any reason (background kill, mic fault, USB disconnect), you'll see a red "RECORDING STOPPED" banner within 5 seconds with two options: SAVE WHAT'S CAPTURED (finalize the meeting with the partial transcript) or RETRY (reboot the engine).
+• NEW: "Share Audio File" button on every meeting detail view. AirDrop, email, or save the raw recording to iCloud Drive — perfect for recovering older meetings, or handing audio off for external transcription.
+• NEW: Automatic transcript recovery on relaunch. If iOS ever kills Ora mid-meeting (memory pressure, force-quit, restart), the next time you open the app you'll see a prompt showing how many words were captured and offering to finalize it as a completed meeting — with a full Groq-generated summary and action items. No more losing an entire meeting to an unexpected crash.
+• If you experienced a blank recap before this build, your audio file is still saved on-device — open the meeting, tap "Share Audio File", and back it up immediately.
+• No other functional changes. Speaker ID, Ask Ora, and follow-up emails work as in Build 99.

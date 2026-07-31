@@ -253,3 +253,17 @@ The Fastfile `beta` lane handles all post-upload steps automatically after every
 - 100 users by Oct 1
 - 500 users by Nov 15
 - 1,000 users by Dec 25
+
+## Build 100 — Blank recap after phone-call interruption (critical)
+
+**Symptom:** Real user meeting had a phone call come in. User dismissed the call without answering. Recap email that arrived after the meeting was blank (headers only, no summary, no action items, no transcript).
+
+**Root cause:** `SpeechRecognizerService.startListening()` unconditionally reset `fullTranscript = ""` and `transcript = ""` at the top of the function. When the CTCallCenter `.disconnected` handler called `startListening()` to auto-resume after a call, it wiped everything captured before the interruption. Same bug existed in the `.shouldResume` AVAudioSession path (Siri, alarms, AirPods).
+
+**Fix:** Added a `resume: Bool = false` parameter to `startListening`. When true, skip the transcript wipe. Both interruption handlers in RecordingView.swift now call `startListening(resume: true)`. `beginRecording()` was already correct — it snapshots `fullTranscript` as `baseAtStart` and appends new segments, so preserving the buffer was the only missing piece.
+
+**Also noted (not yet fixed):** `transcript_recovery.txt` is written every 30s during recording but nothing reads it back on next app launch. If iOS ever kills the app during a call, the user has no way to recover the captured transcript. Follow-up work: add a launch-time check that surfaces the recovery file to the user with a "restore this meeting" prompt.
+
+**Marketing implication:** Build 91's release notes claimed transcript preservation across calls. That was aspirational, not real. Any TestFlight tester who took a call during a meeting since Build 91 shipped experienced silent transcript loss. Build 100 makes the Build 91 promise finally true — the Meet Ora launch was correctly held until this landed.
+
+**Test before shipping:** Start a recording, speak for 30s, get someone to call you (or use Siri), dismiss the call, speak for another 30s, stop recording. Verify the recap email contains BOTH the pre-call and post-call content.

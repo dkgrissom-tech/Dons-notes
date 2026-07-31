@@ -27,10 +27,16 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @State private var elapsedSeconds = 0
     @State private var recordingTimer: Timer? = nil
     @State private var flushTimer: Timer? = nil                          // Build 90: auto-flush transcript every 30s
+    @State private var recordingStartedAt: Date? = nil                   // Build 100: real start time — embedded in recovery file
     @State private var interruptionObserver: NSObjectProtocol? = nil     // Build 90: phone-call/AirPods/sleep handler
     @State private var resumeAfterInterruption: Bool = false             // Build 90: track if we paused due to interruption
     @State private var callCenter: CTCallCenter? = nil          // Build 91: cellular call monitor
     @State private var phoneCallBannerVisible: Bool = false     // Build 91: banner shown during call
+    // Build 100: recording-health alarm state — fires when audio engine dies silently
+    @State private var recordingHealthAlarm: Bool = false
+    @State private var recordingHaltReason: String = ""
+    @State private var resumeRetryCount: Int = 0
+    @State private var deadEngineTicks: Int = 0
     @FocusState private var nameFieldFocused: Bool
     @FocusState private var emailFieldFocused: Bool
     @Environment(\.dismiss) var dismiss
@@ -468,6 +474,84 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .animation(.spring(duration: 0.35), value: phoneCallBannerVisible)
             }
+
+            // Build 100: RED alarm banner — shown when audio capture dies silently.
+            // Never lets the user think recording is still working. Save button hands
+            // whatever transcript was captured off to the recap flow immediately.
+            if recordingHealthAlarm {
+                VStack {
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(LM.Fonts.text(16))
+                                .foregroundColor(.white)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("RECORDING STOPPED")
+                                    .font(LM.Fonts.mono(11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .tracking(0.8)
+                                Text(recordingHaltReason)
+                                    .font(LM.Fonts.text(11))
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer()
+                        }
+                        HStack(spacing: 10) {
+                            Button {
+                                // Save what we have — route through stopRecording so the
+                                // partial transcript flows into uploadMeeting and the
+                                // audio file gets closed cleanly.
+                                recordingHealthAlarm = false
+                                stopRecording()
+                                Task { await uploadMeeting() }
+                            } label: {
+                                Text("SAVE WHAT'S CAPTURED")
+                                    .font(LM.Fonts.mono(11, weight: .bold))
+                                    .foregroundColor(Color.red)
+                                    .tracking(0.5)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color.white)
+                                    .cornerRadius(LM.Radius.sm)
+                            }
+                            Button {
+                                // Manual retry — clear the alarm and try to reboot the engine.
+                                recordingHealthAlarm = false
+                                deadEngineTicks = 0
+                                if !speechService.isListening {
+                                    speechService.startListening(resume: true)
+                                }
+                                lumen.orbState = .listening
+                            } label: {
+                                Text("RETRY")
+                                    .font(LM.Fonts.mono(11, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .tracking(0.5)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color.white.opacity(0.2))
+                                    .cornerRadius(LM.Radius.sm)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: LM.Radius.sm)
+                                            .stroke(Color.white, lineWidth: 1)
+                                    )
+                            }
+                        }
+                    }
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.vertical, 14)
+                    .background(Color.red)
+                    .cornerRadius(LM.Radius.md)
+                    .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
+                    .padding(.horizontal, LM.Space.md)
+                    .padding(.top, LM.Space.md)
+                    Spacer()
+                }
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .animation(.spring(duration: 0.35), value: recordingHealthAlarm)
+                .zIndex(1000)  // Always on top.
+            }
         }
     }
 
@@ -523,25 +607,35 @@ struct RecordingView<T: APIServiceProtocol>: View {
         lumen.orbState = .listening         // override immediately AFTER reset
         speechService.startListening()
         elapsedSeconds = 0
+        // Build 100: capture the recording's real start time so the recovery header
+        // can report accurate duration if we crash mid-meeting.
+        recordingStartedAt = Date()
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            elapsedSeconds += 1
+            // Build 100: Only tick the counter when audio is ACTUALLY being captured.
+            // A silently-dead engine (post phone-call resume failure) now freezes the
+            // counter instead of lying to the user. The health check also runs every
+            // tick to detect and either recover or halt on dead engines.
+            if speechService.isCapturingAudio {
+                elapsedSeconds += 1
+            }
             lumen.checkTriggerTimeout()
+            verifyRecordingHealth()
         }
 
         // Build 90: Keep iPhone screen awake for the entire meeting. Cleared in stopRecording().
         UIApplication.shared.isIdleTimerDisabled = true
 
-        // Build 90: Auto-flush the live transcript to disk every 30 seconds so a crash
-        // or interruption can never wipe a long meeting. Stored at
-        // Documents/transcript_recovery.txt — recovered on next launch if non-empty.
+        // Build 90/100: Auto-flush the live transcript to disk every 30 seconds so
+        // a crash, watchdog kill, or memory eviction can never wipe a long meeting.
+        // Build 100 adds a header block (STARTED_AT / LAST_FLUSH) so the launch-time
+        // recovery prompt can report meaningful duration to the user. On clean stop
+        // the file is deleted; if it survives to next launch, DonsNotesApp offers
+        // to finalize it as a completed meeting.
         flushTimer?.invalidate()
+        let startTime = recordingStartedAt ?? Date()
         flushTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
             let text = speechService.transcript
-            guard !text.isEmpty else { return }
-            if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let url = docs.appendingPathComponent("transcript_recovery.txt")
-                try? text.write(to: url, atomically: true, encoding: .utf8)
-            }
+            TranscriptRecoveryService.flush(transcript: text, startedAt: startTime)
         }
 
         // Build 91: AVAudioSession interruption observer — handles Siri, alarms, AirPods.
@@ -566,7 +660,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     if options.contains(.shouldResume), resumeAfterInterruption {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                             if !speechService.isListening {
-                                speechService.startListening()
+                                // Build 100: resume=true preserves the transcript captured
+                                // before the interruption (Siri / alarm / AirPods).
+                                speechService.startListening(resume: true)
                             }
                         }
                     }
@@ -594,15 +690,72 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     phoneCallBannerVisible = false
                     if resumeAfterInterruption {
                         resumeAfterInterruption = false
-                        // Give iOS 0.8s to fully release the audio session after the call.
-                        try? await Task.sleep(nanoseconds: 800_000_000)
-                        if !speechService.isListening {
-                            speechService.startListening()
+                        // Build 100: Escalating retry — declined calls (Incoming
+                        // → Disconnected without ever reaching Connected) don't
+                        // release the audio session as reliably as ended calls do.
+                        // Try up to 3 times: 0.8s, 1.5s, 2.5s. If all fail, fire
+                        // the recording-health alarm so the user isn't lied to.
+                        let delays: [UInt64] = [800_000_000, 1_500_000_000, 2_500_000_000]
+                        var resumed = false
+                        for (i, delay) in delays.enumerated() {
+                            resumeRetryCount = i + 1
+                            try? await Task.sleep(nanoseconds: delay)
+                            if !speechService.isListening {
+                                // resume=true preserves the pre-call transcript.
+                                speechService.startListening(resume: true)
+                            }
+                            // Wait briefly for the tap to start delivering buffers.
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            if speechService.isCapturingAudio {
+                                resumed = true
+                                break
+                            }
+                        }
+                        resumeRetryCount = 0
+                        if !resumed {
+                            // Audio engine is dead. Halt loudly — do NOT let the
+                            // counter keep ticking as if everything is fine.
+                            recordingHaltReason = "Recording didn't restart after your phone call. Tap Save to keep what was captured before the call."
+                            recordingHealthAlarm = true
+                            lumen.orbState = .idle
+                            // Haptic — users need to feel this failure, not just see it.
+                            let generator = UINotificationFeedbackGenerator()
+                            generator.notificationOccurred(.error)
                         }
                     }
                 default:
                     break
                 }
+            }
+        }
+    }
+
+    // Build 100: Every-second health check called by the recording timer.
+    // Detects a silently-dead audio engine that no interruption handler caught
+    // (e.g. background app kill, mic hardware fault, USB audio disconnect).
+    // Requires 5 seconds of consecutive dead-engine readings before halting to
+    // avoid false positives from transient buffer gaps.
+    func verifyRecordingHealth() {
+        guard speechService.isListening,
+              !recordingHealthAlarm,
+              !phoneCallBannerVisible,
+              resumeRetryCount == 0 else {
+            // Reset counter if we're intentionally paused or already halted.
+            deadEngineTicks = 0
+            return
+        }
+        if speechService.isCapturingAudio {
+            deadEngineTicks = 0
+        } else {
+            deadEngineTicks += 1
+            if deadEngineTicks >= 5 {
+                // 5 seconds of no audio buffers while supposedly listening = dead.
+                recordingHaltReason = "Recording stopped unexpectedly. Tap Save to keep what was captured so far."
+                recordingHealthAlarm = true
+                lumen.orbState = .idle
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.error)
+                deadEngineTicks = 0
             }
         }
     }
@@ -625,11 +778,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
         callCenter?.callEventHandler = nil
         callCenter = nil
         phoneCallBannerVisible = false
-        // Clear the recovery file since the meeting ended cleanly.
-        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let url = docs.appendingPathComponent("transcript_recovery.txt")
-            try? FileManager.default.removeItem(at: url)
-        }
+        // Build 100: Clear the recovery file since the meeting ended cleanly.
+        // (uploadMeeting path also clears it — this covers the discard path.)
+        TranscriptRecoveryService.clear()
     }
 
     func toggleVoiceDictation() {
