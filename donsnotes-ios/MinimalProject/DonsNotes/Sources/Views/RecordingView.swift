@@ -355,7 +355,42 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     .font(LM.Fonts.mono(11, weight: .bold))
                     .foregroundColor(LM.Colors.red)
                     .tracking(4)
-                    .padding(.bottom, LM.Space.xl)
+                    .padding(.bottom, LM.Space.md)
+
+                // Build 104: Always-visible CONTINUE RECORDING button.
+                // The button is ALWAYS enabled so the user can force a fresh
+                // start any time they suspect trouble. Styling changes based on
+                // engine health: bright red urgent style when audio is dead,
+                // subdued gray when everything is healthy (so it doesn't scream
+                // at the user during a normal recording).
+                Button {
+                    manualContinueRecording(source: "always-visible")
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "record.circle.fill")
+                            .font(LM.Fonts.text(13))
+                        Text(speechService.isCapturingAudio ? "CONTINUE RECORDING" : "TAP TO CONTINUE RECORDING")
+                            .font(LM.Fonts.mono(11, weight: .bold))
+                            .tracking(1.5)
+                    }
+                    .foregroundColor(speechService.isCapturingAudio
+                                     ? LM.Colors.textTertiary
+                                     : Color.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .background(speechService.isCapturingAudio
+                                ? LM.Colors.textTertiary.opacity(0.10)
+                                : Color.red)
+                    .cornerRadius(LM.Radius.sm)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: LM.Radius.sm)
+                            .stroke(speechService.isCapturingAudio
+                                    ? LM.Colors.textTertiary.opacity(0.30)
+                                    : Color.red, lineWidth: 1)
+                    )
+                    .animation(.easeInOut(duration: 0.2), value: speechService.isCapturingAudio)
+                }
+                .padding(.bottom, LM.Space.lg)
 
                 // Live orb — tap to wake LUMEN AI, long-press to open diagnostics.
                 LUMENOrbView(
@@ -508,13 +543,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
-                            // Build 101: spinner while background auto-resume is running,
-                            // so the user sees Ora is actively trying to recover.
-                            if autoResumeTask != nil {
-                                ProgressView()
-                                    .progressViewStyle(.circular)
-                                    .tint(.white)
-                            }
+                            // Build 104: no more spinner — no auto-resume loop.
+                            // User is in charge of resuming.
                         }
                         HStack(spacing: 10) {
                             Button {
@@ -541,28 +571,22 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                     .cornerRadius(LM.Radius.sm)
                             }
                             Button {
-                                // Manual retry — hard-restart the audio engine.
-                                // Build 101: use forceRestart so we bypass the zombie
-                                // isListening=true state that makes startListening a no-op.
-                                RecordingDiagnostics.shared.log(.ui, "RETRY button tapped")
-                                cancelAutoResumeLoop()
-                                recordingHealthAlarm = false
-                                deadEngineTicks = 0
-                                speechService.forceRestart(resume: true)
-                                lumen.orbState = .listening
+                                // Build 104: banner CONTINUE RECORDING button.
+                                // Uses the unified manualContinueRecording path.
+                                manualContinueRecording(source: "banner")
                             } label: {
-                                Text("RETRY")
-                                    .font(LM.Fonts.mono(11, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .tracking(0.5)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.white.opacity(0.2))
-                                    .cornerRadius(LM.Radius.sm)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: LM.Radius.sm)
-                                            .stroke(Color.white, lineWidth: 1)
-                                    )
+                                HStack(spacing: 6) {
+                                    Image(systemName: "record.circle.fill")
+                                        .font(LM.Fonts.text(12))
+                                    Text("CONTINUE RECORDING")
+                                        .font(LM.Fonts.mono(11, weight: .bold))
+                                        .tracking(0.5)
+                                }
+                                .foregroundColor(Color.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.white)
+                                .cornerRadius(LM.Radius.sm)
                             }
                         }
                         // Build 103: COPY LOG button — dumps the diagnostic log to
@@ -798,13 +822,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             // Fire the alarm AND start the silent background auto-retry
                             // loop so the user gets automatic recovery if iOS releases
                             // the session late.
-                            RecordingDiagnostics.shared.log(.ui, "ALARM raised (post-call retries exhausted); starting auto-resume loop")
-                            recordingHaltReason = "Recording didn't restart after your phone call yet. Trying to resume automatically…"
+                            // Build 104: no more auto-resume loop. The banner
+                            // now stays until the user taps CONTINUE RECORDING.
+                            RecordingDiagnostics.shared.log(.ui, "ALARM raised (post-call retries exhausted); waiting for manual CONTINUE")
+                            recordingHaltReason = "Recording didn't restart after your phone call. Tap CONTINUE RECORDING below to resume, or SAVE to keep what was captured."
                             recordingHealthAlarm = true
                             lumen.orbState = .idle
                             let generator = UINotificationFeedbackGenerator()
                             generator.notificationOccurred(.error)
-                            startAutoResumeLoop()
                         }
                     }
                 default:
@@ -834,66 +859,52 @@ struct RecordingView<T: APIServiceProtocol>: View {
             deadEngineTicks += 1
             if deadEngineTicks >= 5 {
                 // 5 seconds of no audio buffers while supposedly listening = dead.
-                RecordingDiagnostics.shared.log(.ui, "ALARM raised (health-check: 5s no buffers); starting auto-resume")
-                recordingHaltReason = "Recording stopped unexpectedly. Trying to resume automatically…"
+                // Build 104: no auto-resume — alarm stays until user taps
+                // CONTINUE RECORDING. Eliminates the banner-flicker cycle
+                // where auto-restart briefly succeeded then died again.
+                RecordingDiagnostics.shared.log(.ui, "ALARM raised (health-check: 5s no buffers); waiting for manual CONTINUE")
+                recordingHaltReason = "Recording stopped. Tap CONTINUE RECORDING below to resume, or SAVE to keep what was captured."
                 recordingHealthAlarm = true
                 lumen.orbState = .idle
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.error)
                 deadEngineTicks = 0
-                // Build 101: also kick off the background auto-retry loop from
-                // this dead-engine path (not just phone-call disconnect).
-                startAutoResumeLoop()
             }
         }
     }
 
-    /// Build 101: Silent background retry loop that runs while the alarm banner
-    /// is showing. Tries startListening(resume: true) every 3 seconds. On the
-    /// first attempt where real audio buffers flow, dismisses the banner, gives
-    /// a soft success haptic, and lets the meeting continue.
-    ///
-    /// Cancellation: manual RETRY / SAVE / stopRecording call cancelAutoResumeLoop().
-    /// Also self-cancels after 20 attempts (~60 seconds) to avoid running forever.
+    // Build 104: startAutoResumeLoop is now a NO-OP. Kept as a stub so existing
+    // call sites compile. The auto-resume loop was removed because it caused
+    // banner-flicker: a brief "engine alive" false positive would dismiss the
+    // banner, then the health check would re-fire it seconds later, cycling
+    // the UI on and off. Recovery is now always manual via the CONTINUE
+    // RECORDING button (in the alarm banner and always-visible on-screen).
     func startAutoResumeLoop() {
-        cancelAutoResumeLoop()  // never allow two loops in flight
-        RecordingDiagnostics.shared.log(.retry, "autoResumeLoop started")
-        autoResumeTask = Task { @MainActor in
-            for tick in 0..<20 {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if Task.isCancelled { RecordingDiagnostics.shared.log(.retry, "autoResumeLoop cancelled at tick \(tick)"); return }
-                // If the user already handled it (Save / manual Retry), bail.
-                if !recordingHealthAlarm { RecordingDiagnostics.shared.log(.retry, "autoResumeLoop exit (alarm cleared) tick \(tick)"); return }
-                RecordingDiagnostics.shared.log(.retry, "autoResumeLoop tick \(tick+1)/20 → forceRestart")
-                // Build 101: use forceRestart in the background loop — by definition
-                // we're in zombie state (alarm is up because engine died), so a plain
-                // startListening will hit the isListening guard and no-op forever.
-                speechService.forceRestart(resume: true)
-                // forceRestart has its own internal 500ms teardown delay, plus tap
-                // startup latency. Give it 1.2s total before checking.
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                if Task.isCancelled { return }
-                RecordingDiagnostics.shared.log(.retry, "tick \(tick+1) post-check: isCapturingAudio=\(speechService.isCapturingAudio) isListening=\(speechService.isListening)")
-                if speechService.isCapturingAudio {
-                    // Recovered on its own — dismiss alarm, resume normal state.
-                    recordingHealthAlarm = false
-                    lumen.orbState = .listening
-                    deadEngineTicks = 0
-                    let generator = UINotificationFeedbackGenerator()
-                    generator.notificationOccurred(.success)
-                    return
-                }
-            }
-            // Ran out of attempts — update the banner to stop promising recovery.
-            if recordingHealthAlarm {
-                recordingHaltReason = "Recording didn't restart after your phone call. Tap Save to keep what was captured before the call."
-            }
-        }
+        RecordingDiagnostics.shared.log(.retry, "startAutoResumeLoop() no-op (Build 104: manual recovery only)")
     }
 
     func cancelAutoResumeLoop() {
+        // No-op in Build 104. autoResumeTask is never set. Kept for call-site compat.
         autoResumeTask?.cancel()
         autoResumeTask = nil
+    }
+
+    /// Build 104: Unified manual resume entry point. Called by:
+    ///   - CONTINUE RECORDING button on the alarm banner
+    ///   - Always-visible CONTINUE RECORDING button on the main recording screen
+    ///   - Legacy RETRY button on the banner
+    /// Force-restarts the audio engine, clears the alarm, and puts the orb
+    /// back into listening state.
+    func manualContinueRecording(source: String) {
+        RecordingDiagnostics.shared.log(.ui, "CONTINUE RECORDING tapped [\(source)]")
+        recordingHealthAlarm = false
+        deadEngineTicks = 0
+        phoneCallBannerVisible = false
+        resumeRetryCount = 0
+        speechService.forceRestart(resume: true)
+        lumen.orbState = .listening
+        let generator = UINotificationFeedbackGenerator()
+        generator.notificationOccurred(.success)
     }
 
     func stopRecording() {
