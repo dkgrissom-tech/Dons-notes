@@ -1,5 +1,5 @@
-Build 107 — speech-recognizer visibility.
+Build 108 — fix Build 107 compile error.
 
-Recording behavior is unchanged from Build 106. This build adds diagnostic logs so we can see whether Apple's speech recognizer is producing results.
+Build 107 didn't ship because of a Swift compile error in one log string. This build fixes that and enables the speech-recognizer diagnostic logging.
 
 If your next recording ends with an empty email, long-press the orb 3 seconds and share the diagnostic log — the SPEECH entries will show exactly where the transcription pipeline died.
