@@ -1,9 +1,9 @@
-Build 109 — persistent diagnostic log + upload logging.
+Build 110 — fix empty recap email caused by canceled recognizer callback.
 
-The diagnostic log used to reset every time you tapped record — so if you got an empty email and started a fresh recording to capture the log, the failing session's evidence was already gone.
+Root cause found via Build 109's diagnostic log: transcript had 127 words / 589 chars at stopListening, then 0 chars 2.2 seconds later at uploadMeeting. The final SFSpeechRecognizer callback delivered after task cancellation carries an empty bestTranscription.formattedString, and the result-processing block was overwriting the accumulated transcript with "".
 
-Fix: the log now persists across recordings. Each new session shows up under a clear "SESSION BOUNDARY" line so you can tell them apart.
+Fix: two guards in SpeechRecognizerService.
+1. Skip the fullTranscript/transcript mutation when the callback's formattedString is empty (cumulative results from a live recognizer are never empty — only teardown produces "").
+2. In stopListening(), snapshot fullTranscript before canceling the task and restore it after teardown, so any late callback that beats us cannot wipe a completed session.
 
-Also added: the upload path now logs the transcript character counts and which branch it takes. This is the smoking gun for empty-email diagnosis.
-
-No behavior changes to recording, upload, or email.
+No other behavior changes.
