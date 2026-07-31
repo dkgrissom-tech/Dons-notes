@@ -16,6 +16,7 @@
         110000012C10000100000196 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000132 /* AudioRecorder.swift */; };
         110000012C10000100000197 /* ContactService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000133 /* ContactService.swift */; };
         110000012C10000100000198 /* MeetingCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000134 /* MeetingCacheService.swift */; };
+        BB000000100000201 /* TranscriptRecoveryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB000000100000200 /* TranscriptRecoveryService.swift */; };
         110000012C10000100000199 /* ProfileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000135 /* ProfileService.swift */; };
         110000012C1000010000019A /* RealAPIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000136 /* RealAPIService.swift */; };
         110000012C1000010000019B /* SpeechRecognizerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 110000012C10000100000137 /* SpeechRecognizerService.swift */; };
@@ -50,6 +51,7 @@
         110000012C10000100000132 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
         110000012C10000100000133 /* ContactService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContactService.swift; sourceTree = "<group>"; };
         110000012C10000100000134 /* MeetingCacheService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingCacheService.swift; sourceTree = "<group>"; };
+        BB000000100000200 /* TranscriptRecoveryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptRecoveryService.swift; sourceTree = "<group>"; };
         110000012C10000100000135 /* ProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileService.swift; sourceTree = "<group>"; };
         110000012C10000100000136 /* RealAPIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealAPIService.swift; sourceTree = "<group>"; };
         110000012C10000100000137 /* SpeechRecognizerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechRecognizerService.swift; sourceTree = "<group>"; };
@@ -148,6 +150,7 @@
                 110000012C10000100000132 /* AudioRecorder.swift */,
                 110000012C10000100000133 /* ContactService.swift */,
                 110000012C10000100000134 /* MeetingCacheService.swift */,
+                BB000000100000200 /* TranscriptRecoveryService.swift */,
                 110000012C10000100000135 /* ProfileService.swift */,
                 110000012C10000100000136 /* RealAPIService.swift */,
                 110000012C10000100000137 /* SpeechRecognizerService.swift */,
@@ -274,6 +277,7 @@
                 110000012C10000100000196 /* AudioRecorder.swift in Sources */,
                 110000012C10000100000197 /* ContactService.swift in Sources */,
                 110000012C10000100000198 /* MeetingCacheService.swift in Sources */,
+                BB000000100000201 /* TranscriptRecoveryService.swift in Sources */,
                 110000012C10000100000199 /* ProfileService.swift in Sources */,
                 110000012C1000010000019A /* RealAPIService.swift in Sources */,
                 110000012C1000010000019B /* SpeechRecognizerService.swift in Sources */,

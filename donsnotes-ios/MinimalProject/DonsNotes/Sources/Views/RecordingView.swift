@@ -27,6 +27,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @State private var elapsedSeconds = 0
     @State private var recordingTimer: Timer? = nil
     @State private var flushTimer: Timer? = nil                          // Build 90: auto-flush transcript every 30s
+    @State private var recordingStartedAt: Date? = nil                   // Build 100: real start time — embedded in recovery file
     @State private var interruptionObserver: NSObjectProtocol? = nil     // Build 90: phone-call/AirPods/sleep handler
     @State private var resumeAfterInterruption: Bool = false             // Build 90: track if we paused due to interruption
     @State private var callCenter: CTCallCenter? = nil          // Build 91: cellular call monitor
@@ -606,6 +607,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
         lumen.orbState = .listening         // override immediately AFTER reset
         speechService.startListening()
         elapsedSeconds = 0
+        // Build 100: capture the recording's real start time so the recovery header
+        // can report accurate duration if we crash mid-meeting.
+        recordingStartedAt = Date()
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             // Build 100: Only tick the counter when audio is ACTUALLY being captured.
             // A silently-dead engine (post phone-call resume failure) now freezes the
@@ -621,17 +625,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
         // Build 90: Keep iPhone screen awake for the entire meeting. Cleared in stopRecording().
         UIApplication.shared.isIdleTimerDisabled = true
 
-        // Build 90: Auto-flush the live transcript to disk every 30 seconds so a crash
-        // or interruption can never wipe a long meeting. Stored at
-        // Documents/transcript_recovery.txt — recovered on next launch if non-empty.
+        // Build 90/100: Auto-flush the live transcript to disk every 30 seconds so
+        // a crash, watchdog kill, or memory eviction can never wipe a long meeting.
+        // Build 100 adds a header block (STARTED_AT / LAST_FLUSH) so the launch-time
+        // recovery prompt can report meaningful duration to the user. On clean stop
+        // the file is deleted; if it survives to next launch, DonsNotesApp offers
+        // to finalize it as a completed meeting.
         flushTimer?.invalidate()
+        let startTime = recordingStartedAt ?? Date()
         flushTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
             let text = speechService.transcript
-            guard !text.isEmpty else { return }
-            if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                let url = docs.appendingPathComponent("transcript_recovery.txt")
-                try? text.write(to: url, atomically: true, encoding: .utf8)
-            }
+            TranscriptRecoveryService.flush(transcript: text, startedAt: startTime)
         }
 
         // Build 91: AVAudioSession interruption observer — handles Siri, alarms, AirPods.
@@ -774,11 +778,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
         callCenter?.callEventHandler = nil
         callCenter = nil
         phoneCallBannerVisible = false
-        // Clear the recovery file since the meeting ended cleanly.
-        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let url = docs.appendingPathComponent("transcript_recovery.txt")
-            try? FileManager.default.removeItem(at: url)
-        }
+        // Build 100: Clear the recovery file since the meeting ended cleanly.
+        // (uploadMeeting path also clears it — this covers the discard path.)
+        TranscriptRecoveryService.clear()
     }
 
     func toggleVoiceDictation() {
