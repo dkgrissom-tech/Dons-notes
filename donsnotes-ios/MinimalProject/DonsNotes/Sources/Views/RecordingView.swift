@@ -668,9 +668,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
     // MARK: - Actions
     func startRecording() {
-        // Build 103: fresh meeting = fresh diagnostic log so previous meeting
-        // noise doesn't contaminate this run's post-mortem.
-        RecordingDiagnostics.shared.clear()
+        // Build 109: DO NOT clear the diagnostic log on a fresh meeting anymore.
+        // The old behavior wiped the previous session's evidence — which meant
+        // when the user got an empty recap email and started a NEW recording to
+        // grab the log, the failed session's data was gone. Instead we insert a
+        // clear session-boundary marker so we can still tell sessions apart.
+        // The ring buffer caps at 500 entries so this can't grow unbounded.
+        RecordingDiagnostics.shared.log(.info, "====== SESSION BOUNDARY — previous meeting ended above / new startRecording() below ======")
         RecordingDiagnostics.shared.log(.info, "====== startRecording() called — fresh meeting ======")
         // Stop any active attendee voice inputs — they hold AVAudioSession
         // and will crash SpeechRecognizerService.startListening() if still active.
@@ -1102,6 +1106,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
             // Append any remaining text after the last Ora exchange too
             let rawFull = await MainActor.run { speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines) }
             let meetingOnly = await MainActor.run { lumen.meetingTranscript.trimmingCharacters(in: .whitespacesAndNewlines) }
+            // Build 109: log both transcript sources so we can see WHICH branch
+            // uploadMeeting takes and whether either field is empty. This is the
+            // single most important data point for diagnosing empty recap emails.
+            RecordingDiagnostics.shared.log(.ui, "uploadMeeting: rawFull=\(rawFull.count) chars, meetingOnly=\(meetingOnly.count) chars")
             // Append any tail text after last Ora exchange
             let lastEnd = await MainActor.run { lumen.lastOraExchangeEndIndex }
             let tailText: String
@@ -1111,6 +1119,9 @@ struct RecordingView<T: APIServiceProtocol>: View {
             } else { tailText = "" }
             let transcript = meetingOnly.isEmpty ? rawFull :
                 (tailText.isEmpty ? meetingOnly : meetingOnly + " " + tailText)
+            // Build 109: log the final chosen transcript that will be fed to Groq
+            // and put in the email body. If this is 0 chars, the email will be empty.
+            RecordingDiagnostics.shared.log(.ui, "uploadMeeting: chosen transcript=\(transcript.count) chars (\(meetingOnly.isEmpty ? "rawFull" : "meetingOnly") branch)")
             let insights = await MainActor.run { lumen.insights }
             let attendeesCopy = await MainActor.run { attendees }
             let organizer = await MainActor.run { profileService.userName }
