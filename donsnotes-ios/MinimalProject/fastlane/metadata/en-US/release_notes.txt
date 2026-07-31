@@ -1,11 +1,5 @@
-Build 105 — No more empty recap emails.
+Build 106 — revert Build 105.
 
-FIXED: Ora used to compose a recap email even when the recording captured zero speech, resulting in an email with just "Meeting Recap — ORA / Date / Attendees" and no summary, no transcript, no content. That silent-failure mode is gone.
+Build 105's transcript-preview + empty-warning logic incorrectly flagged real recordings as empty. Rolled back to Build 104 behavior on the upload screen: RECORDING COMPLETE + Upload & Process button + Discard.
 
-NEW: After you stop recording, the upload screen now shows you a preview of exactly what Ora heard. You'll see the word count and the full captured transcript in a scrollable box BEFORE you tap "Upload & Process." If it looks wrong you can discard right there.
-
-NEW: When a recording captures no audio, the upload screen replaces the "Upload & Process" button with a clear warning: "Ora didn't hear any speech." The only option is Discard. No hollow email will ever go out.
-
-Belt-and-suspenders: even if some code path reaches uploadMeeting with empty content, it will now bail out cleanly instead of firing off an empty email.
-
-Carries forward all Build 100-104 fixes: transcript recovery, share audio, force-restart zombie engine, diagnostic logging, no more banner-flicker, always-visible CONTINUE RECORDING button, background audio for app-switch survival.
+All Build 100-104 fixes remain in place: transcript recovery, share audio, force-restart zombie engine, diagnostic logging, no more banner-flicker, always-visible CONTINUE RECORDING button, background audio.
