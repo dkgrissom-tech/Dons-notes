@@ -35,6 +35,8 @@ struct RecordingView<T: APIServiceProtocol>: View {
     // Build 100: recording-health alarm state — fires when audio engine dies silently
     @State private var recordingHealthAlarm: Bool = false
     @State private var autoResumeTask: Task<Void, Never>? = nil     // Build 101: background retry while banner is up
+    @State private var copyLogFeedback: Bool = false                // Build 103: transient "copied" state on log button
+    @State private var diagnosticSheetVisible: Bool = false         // Build 103: long-press-orb log viewer
     @State private var recordingHaltReason: String = ""
     @State private var resumeRetryCount: Int = 0
     @State private var deadEngineTicks: Int = 0
@@ -144,6 +146,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
         // Paywall: shown when free user taps orb and tries to use LUMEN AI
         .sheet(isPresented: $lumen.isShowingPaywall) {
             PlansView()
+        }
+        // Build 103: diagnostic log viewer — opened by long-pressing the orb 3s.
+        .sheet(isPresented: $diagnosticSheetVisible) {
+            DiagnosticLogSheet(isPresented: $diagnosticSheetVisible)
         }
     }
 
@@ -351,7 +357,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     .tracking(4)
                     .padding(.bottom, LM.Space.xl)
 
-                // Live orb — tap to wake LUMEN AI.
+                // Live orb — tap to wake LUMEN AI, long-press to open diagnostics.
                 LUMENOrbView(
                     state: lumen.orbState,
                     speechService: speechService,
@@ -359,6 +365,11 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 )
                 .onTapGesture {
                     lumen.orbTapped(currentTranscript: speechService.transcript)
+                }
+                .onLongPressGesture(minimumDuration: 3.0) {
+                    // Build 103: hidden gesture — open the diagnostic log viewer.
+                    RecordingDiagnostics.shared.log(.ui, "long-press orb → open diagnostic sheet")
+                    diagnosticSheetVisible = true
                 }
 
                 // Tap hint label
@@ -512,6 +523,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                 // audio file gets closed cleanly. stopRecording() sets
                                 // speechService.recordingURL to the finalized m4a, which
                                 // uploadMeeting needs as its input.
+                                RecordingDiagnostics.shared.log(.ui, "SAVE WHAT'S CAPTURED tapped")
                                 cancelAutoResumeLoop()
                                 recordingHealthAlarm = false
                                 stopRecording()
@@ -532,6 +544,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                 // Manual retry — hard-restart the audio engine.
                                 // Build 101: use forceRestart so we bypass the zombie
                                 // isListening=true state that makes startListening a no-op.
+                                RecordingDiagnostics.shared.log(.ui, "RETRY button tapped")
                                 cancelAutoResumeLoop()
                                 recordingHealthAlarm = false
                                 deadEngineTicks = 0
@@ -551,6 +564,31 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                             .stroke(Color.white, lineWidth: 1)
                                     )
                             }
+                        }
+                        // Build 103: COPY LOG button — dumps the diagnostic log to
+                        // clipboard so the user can paste it into Notes / email /
+                        // Messages and send it back to us for post-mortem analysis.
+                        Button {
+                            RecordingDiagnostics.shared.log(.ui, "COPY LOG tapped")
+                            let text = RecordingDiagnostics.shared.exportText()
+                            UIPasteboard.general.string = text
+                            copyLogFeedback = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                copyLogFeedback = false
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: copyLogFeedback ? "checkmark" : "doc.on.clipboard")
+                                    .font(LM.Fonts.text(11))
+                                Text(copyLogFeedback ? "COPIED — PASTE INTO A MESSAGE" : "COPY DIAGNOSTIC LOG")
+                                    .font(LM.Fonts.mono(10, weight: .bold))
+                                    .tracking(0.5)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.white.opacity(0.15))
+                            .cornerRadius(LM.Radius.sm)
                         }
                     }
                     .padding(.horizontal, LM.Space.md)
@@ -606,6 +644,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
     // MARK: - Actions
     func startRecording() {
+        // Build 103: fresh meeting = fresh diagnostic log so previous meeting
+        // noise doesn't contaminate this run's post-mortem.
+        RecordingDiagnostics.shared.clear()
+        RecordingDiagnostics.shared.log(.info, "====== startRecording() called — fresh meeting ======")
         // Stop any active attendee voice inputs — they hold AVAudioSession
         // and will crash SpeechRecognizerService.startListening() if still active.
         voiceInput.stop()
@@ -665,8 +707,10 @@ struct RecordingView<T: APIServiceProtocol>: View {
                       let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
                 switch type {
                 case .began:
+                    RecordingDiagnostics.shared.log(.interrupt, "AVAudioSession .began; wasListening=\(speechService.isListening)")
                     resumeAfterInterruption = speechService.isListening
                 case .ended:
+                    RecordingDiagnostics.shared.log(.interrupt, "AVAudioSession .ended; resumeAfterInterruption=\(resumeAfterInterruption)")
                     let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
                     let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
                     // Only auto-resume for non-call interruptions that include .shouldResume.
@@ -696,11 +740,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
             Task { @MainActor in
                 switch call.callState {
                 case CTCallStateConnected, CTCallStateDialing, CTCallStateIncoming:
+                    RecordingDiagnostics.shared.log(.call, "CTCallState=Connected/Dialing/Incoming; isListening=\(speechService.isListening)")
                     if speechService.isListening {
                         resumeAfterInterruption = true
                     }
                     phoneCallBannerVisible = true
                 case CTCallStateDisconnected:
+                    RecordingDiagnostics.shared.log(.call, "CTCallState=Disconnected; resumeAfterInterruption=\(resumeAfterInterruption)")
                     phoneCallBannerVisible = false
                     if resumeAfterInterruption {
                         resumeAfterInterruption = false
@@ -723,6 +769,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         var resumed = false
                         for (i, delay) in delays.enumerated() {
                             resumeRetryCount = i + 1
+                            RecordingDiagnostics.shared.log(.retry, "post-call retry attempt \(i+1)/5 delay=\(delay/1_000_000_000)s")
                             try? await Task.sleep(nanoseconds: delay)
                             // Build 101: attempts 1-2 use gentle startListening. Attempts
                             // 3-5 escalate to forceRestart because by then the mic is
@@ -732,12 +779,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                     speechService.startListening(resume: true)
                                 }
                             } else {
+                                RecordingDiagnostics.shared.log(.retry, "attempt \(i+1) escalates to forceRestart")
                                 speechService.forceRestart(resume: true)
                                 // Extra 600ms for forceRestart's own 500ms teardown delay.
                                 try? await Task.sleep(nanoseconds: 600_000_000)
                             }
                             // Wait briefly for the tap to start delivering buffers.
                             try? await Task.sleep(nanoseconds: 500_000_000)
+                            RecordingDiagnostics.shared.log(.retry, "attempt \(i+1) result: isCapturingAudio=\(speechService.isCapturingAudio) isListening=\(speechService.isListening)")
                             if speechService.isCapturingAudio {
                                 resumed = true
                                 break
@@ -749,6 +798,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             // Fire the alarm AND start the silent background auto-retry
                             // loop so the user gets automatic recovery if iOS releases
                             // the session late.
+                            RecordingDiagnostics.shared.log(.ui, "ALARM raised (post-call retries exhausted); starting auto-resume loop")
                             recordingHaltReason = "Recording didn't restart after your phone call yet. Trying to resume automatically…"
                             recordingHealthAlarm = true
                             lumen.orbState = .idle
@@ -784,6 +834,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
             deadEngineTicks += 1
             if deadEngineTicks >= 5 {
                 // 5 seconds of no audio buffers while supposedly listening = dead.
+                RecordingDiagnostics.shared.log(.ui, "ALARM raised (health-check: 5s no buffers); starting auto-resume")
                 recordingHaltReason = "Recording stopped unexpectedly. Trying to resume automatically…"
                 recordingHealthAlarm = true
                 lumen.orbState = .idle
@@ -806,12 +857,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
     /// Also self-cancels after 20 attempts (~60 seconds) to avoid running forever.
     func startAutoResumeLoop() {
         cancelAutoResumeLoop()  // never allow two loops in flight
+        RecordingDiagnostics.shared.log(.retry, "autoResumeLoop started")
         autoResumeTask = Task { @MainActor in
-            for _ in 0..<20 {
+            for tick in 0..<20 {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
-                if Task.isCancelled { return }
+                if Task.isCancelled { RecordingDiagnostics.shared.log(.retry, "autoResumeLoop cancelled at tick \(tick)"); return }
                 // If the user already handled it (Save / manual Retry), bail.
-                if !recordingHealthAlarm { return }
+                if !recordingHealthAlarm { RecordingDiagnostics.shared.log(.retry, "autoResumeLoop exit (alarm cleared) tick \(tick)"); return }
+                RecordingDiagnostics.shared.log(.retry, "autoResumeLoop tick \(tick+1)/20 → forceRestart")
                 // Build 101: use forceRestart in the background loop — by definition
                 // we're in zombie state (alarm is up because engine died), so a plain
                 // startListening will hit the isListening guard and no-op forever.
@@ -820,6 +873,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 // startup latency. Give it 1.2s total before checking.
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 if Task.isCancelled { return }
+                RecordingDiagnostics.shared.log(.retry, "tick \(tick+1) post-check: isCapturingAudio=\(speechService.isCapturingAudio) isListening=\(speechService.isListening)")
                 if speechService.isCapturingAudio {
                     // Recovered on its own — dismiss alarm, resume normal state.
                     recordingHealthAlarm = false
@@ -1317,4 +1371,160 @@ final class RecapMailDelegate: NSObject, MFMailComposeViewControllerDelegate {
                                error: Error?) {
         controller.dismiss(animated: true) { [onFinish] in onFinish(result) }
     }
+}
+
+// MARK: - Diagnostic log viewer (Build 103)
+// Full-screen sheet showing the current in-memory diagnostic log. Reached by
+// long-pressing the recording orb for 3 seconds. Provides a "Copy All" button
+// (clipboard) and a "Share" button (native share sheet → AirDrop, Mail,
+// Messages, iCloud Drive, etc). This is our forensic tool for post-mortem
+// diagnosis of recording failures.
+struct DiagnosticLogSheet: View {
+    @Binding var isPresented: Bool
+    @ObservedObject private var diag = RecordingDiagnostics.shared
+    @State private var showShareSheet: Bool = false
+    @State private var copyFeedback: Bool = false
+
+    // Precomputed date formatter for row timestamps.
+    private let ts: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss.SSS"
+        return f
+    }()
+
+    // Color per category so the eye can scan the log fast.
+    private func color(for cat: DiagnosticCategory) -> Color {
+        switch cat {
+        case .call:       return .orange
+        case .interrupt:  return .yellow
+        case .engine:     return .cyan
+        case .session:    return .mint
+        case .recognizer: return .purple
+        case .ui:         return .pink
+        case .retry:      return .blue
+        case .force:      return .red
+        case .error:      return .red
+        case .info:       return .gray
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 0) {
+                // Header stats
+                HStack {
+                    Text("\(diag.entries.count) entries")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text("Build \(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+
+                Divider().padding(.top, 4)
+
+                // The scrolling log itself.
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(diag.entries) { entry in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Text(ts.string(from: entry.timestamp))
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 80, alignment: .leading)
+                                    Text(entry.category.rawValue)
+                                        .font(.system(.caption2, design: .monospaced).weight(.bold))
+                                        .foregroundColor(color(for: entry.category))
+                                        .frame(width: 60, alignment: .leading)
+                                    Text(entry.message)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(.primary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.horizontal)
+                                .id(entry.id)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                    .onAppear {
+                        // Jump to the newest entry.
+                        if let last = diag.entries.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: diag.entries.count) { _, _ in
+                        if let last = diag.entries.last {
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                proxy.scrollTo(last.id, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
+
+                Divider()
+
+                // Action bar
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = diag.exportText()
+                        copyFeedback = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            copyFeedback = false
+                        }
+                    } label: {
+                        HStack {
+                            Image(systemName: copyFeedback ? "checkmark" : "doc.on.clipboard")
+                            Text(copyFeedback ? "Copied" : "Copy All")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundColor(.blue)
+                        .cornerRadius(8)
+                    }
+
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "square.and.arrow.up")
+                            Text("Share")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.green.opacity(0.15))
+                        .foregroundColor(.green)
+                        .cornerRadius(8)
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            }
+            .navigationTitle("Recording Diagnostics")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { isPresented = false }
+                }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                DiagnosticShareSheet(items: [diag.exportText()])
+            }
+        }
+    }
+}
+
+// UIKit share sheet wrapper — used to hand the diagnostic log to AirDrop /
+// Mail / Messages / iCloud Drive.
+struct DiagnosticShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
