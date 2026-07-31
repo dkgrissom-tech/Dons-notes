@@ -632,25 +632,114 @@ struct RecordingView<T: APIServiceProtocol>: View {
     }
 
     // MARK: - Upload Screen
+    // Build 105: Compute the transcript that would be sent, so the upload screen
+    // can show a preview and detect an empty recording BEFORE we send an email.
+    // Mirrors the same fallback logic uploadMeeting uses: prefer meeting-only
+    // (Ora exchanges stripped), fall back to the raw full transcript.
+    private var previewTranscript: String {
+        let raw = speechService.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let meetingOnly = lumen.meetingTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return meetingOnly.isEmpty ? raw : meetingOnly
+    }
+
+    // Build 105: True when the recording produced no transcript at all. Used to
+    // block the "Upload & Process" button and show a warning card instead of
+    // silently sending a hollow email with only the attendees list.
+    private var recordingIsEmpty: Bool {
+        previewTranscript.isEmpty
+    }
+
     private var uploadSection: some View {
         VStack(spacing: LM.Space.lg) {
+            Spacer().frame(height: LM.Space.md)
+            LUMENOrbView(state: .idle, speechService: speechService, size: 100)
+
+            // Build 105: The header text tells the user immediately whether
+            // Ora heard anything. Green success or amber warning.
+            if recordingIsEmpty {
+                Text("NO AUDIO CAPTURED")
+                    .font(LM.Fonts.mono(13, weight: .bold))
+                    .foregroundColor(LM.Colors.red)
+                    .tracking(2)
+            } else {
+                Text("RECORDING COMPLETE")
+                    .font(LM.Fonts.mono(13, weight: .bold))
+                    .foregroundColor(LM.Colors.green)
+                    .tracking(2)
+            }
+
+            // Build 105: Empty warning card vs transcript preview.
+            // The user sees exactly what will be sent before they send it.
+            if recordingIsEmpty {
+                VStack(alignment: .leading, spacing: LM.Space.sm) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(LM.Fonts.text(16))
+                            .foregroundColor(LM.Colors.red)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Ora didn't hear any speech")
+                                .font(LM.Fonts.text(14, weight: .bold))
+                                .foregroundColor(LM.Colors.textPrimary)
+                            Text("The mic didn't pick up any words during this meeting. There's nothing to summarize and no transcript to send, so no email will be sent.")
+                                .font(LM.Fonts.text(13))
+                                .foregroundColor(LM.Colors.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(LM.Space.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(LM.Colors.red.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: LM.Radius.md)
+                        .stroke(LM.Colors.red.opacity(0.4), lineWidth: 1)
+                )
+                .cornerRadius(LM.Radius.md)
+                .padding(.horizontal, LM.Space.md)
+            } else {
+                VStack(alignment: .leading, spacing: LM.Space.sm) {
+                    HStack {
+                        Text("WHAT ORA HEARD")
+                            .font(LM.Fonts.mono(10, weight: .bold))
+                            .foregroundColor(LM.Colors.cyan)
+                            .tracking(2)
+                        Spacer()
+                        Text("\(previewTranscript.split(separator: " ").count) words")
+                            .font(LM.Fonts.mono(10))
+                            .foregroundColor(LM.Colors.textTertiary)
+                    }
+                    ScrollView {
+                        Text(previewTranscript)
+                            .font(LM.Fonts.text(13))
+                            .foregroundColor(LM.Colors.textPrimary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 220)
+                }
+                .padding(LM.Space.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(LM.Colors.cyan.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: LM.Radius.md)
+                        .stroke(LM.Colors.cyan.opacity(0.25), lineWidth: 1)
+                )
+                .cornerRadius(LM.Radius.md)
+                .padding(.horizontal, LM.Space.md)
+
+                Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap")
+                    .font(LM.Fonts.text(13))
+                    .foregroundColor(LM.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, LM.Space.xl)
+            }
+
             Spacer()
-            LUMENOrbView(state: .idle, speechService: speechService, size: 120)
 
-            Text("RECORDING COMPLETE")
-                .font(LM.Fonts.mono(13, weight: .bold))
-                .foregroundColor(LM.Colors.green)
-                .tracking(2)
-
-            Text("\(attendees.count) attendee\(attendees.count == 1 ? "" : "s") will receive the recap")
-                .font(LM.Fonts.text(14))
-                .foregroundColor(LM.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, LM.Space.xl)
-
-            Spacer()
-
-            if let url = speechService.recordingURL {
+            // Build 105: Only show Upload & Process when there's actually
+            // something to upload. When empty, we ONLY show Discard.
+            if let url = speechService.recordingURL, !recordingIsEmpty {
                 LUMENButton(title: isUploading ? "Uploading..." : "Upload & Process",
                             icon: isUploading ? nil : "arrow.up.circle.fill", style: .primary) {
                     uploadMeeting(url: url)
@@ -659,10 +748,14 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 .padding(.horizontal, LM.Space.md)
             }
 
-            Button("Discard Recording") { speechService.recordingURL = nil }
-                .font(LM.Fonts.text(13))
-                .foregroundColor(LM.Colors.red.opacity(0.7))
-                .padding(.bottom, LM.Space.xl)
+            Button(recordingIsEmpty ? "Discard Empty Recording" : "Discard Recording") {
+                speechService.recordingURL = nil
+                speechService.transcript = ""
+                lumen.meetingTranscript = ""
+            }
+            .font(LM.Fonts.text(13))
+            .foregroundColor(LM.Colors.red.opacity(0.9))
+            .padding(.bottom, LM.Space.xl)
         }
     }
 
@@ -1167,6 +1260,18 @@ struct RecordingView<T: APIServiceProtocol>: View {
 
                 // Present share sheet BEFORE dismissing — once dismiss() fires the view
                 // is gone and no sheet can present from it.
+                // Build 105: Guard against sending an empty recap email. If the
+                // recording captured zero words AND Groq didn't produce a summary,
+                // there is literally nothing to send — having attendees alone is
+                // NOT sufficient reason to fire off a hollow email that reads
+                // "Meeting Recap — ORA / Date / Attendees / — Sent via ORA".
+                // The upload screen already surfaces the empty state, but this is
+                // the belt-and-suspenders backstop in case some path reaches here.
+                if cleanTranscript.isEmpty && summary == nil {
+                    RecordingDiagnostics.shared.log(.ui, "uploadMeeting: empty transcript+summary → skipping email")
+                    dismiss()
+                    return
+                }
                 if !cleanTranscript.isEmpty || summary != nil || !attendeesCopy.isEmpty {
                     let subject = "Meeting Recap - \(meeting.createdAt.formatted(date: .abbreviated, time: .omitted))"
                     var body = "Meeting Recap — ORA\n"

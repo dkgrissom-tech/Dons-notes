@@ -1,13 +1,11 @@
-Build 104 — Big fix + big feature. This one changes everything.
+Build 105 — No more empty recap emails.
 
-FIXED: The banner-flicker bug. When the audio engine died, an automatic retry loop was fighting itself — banner on, banner off, banner on, over and over. It's gone. Recording now behaves predictably.
+FIXED: Ora used to compose a recap email even when the recording captured zero speech, resulting in an email with just "Meeting Recap — ORA / Date / Attendees" and no summary, no transcript, no content. That silent-failure mode is gone.
 
-NEW: A big CONTINUE RECORDING button lives on the main recording screen at all times. Tap it any time you suspect something's off — the app instantly force-restarts the mic. No hunting through menus, no waiting for the alarm banner.
-  • When everything is healthy, the button is subtle gray so it doesn't distract.
-  • When audio has stopped, the button turns bold red so you can't miss it.
+NEW: After you stop recording, the upload screen now shows you a preview of exactly what Ora heard. You'll see the word count and the full captured transcript in a scrollable box BEFORE you tap "Upload & Process." If it looks wrong you can discard right there.
 
-NEW: Background audio. Ora now keeps recording when you check your Calendar, open Messages, look at Slack, or lock your screen. The iOS red mic pill stays visible in the status bar so you always know recording is live. This is the same permission voice memo apps use — meetings survive the moment you glance at another app.
+NEW: When a recording captures no audio, the upload screen replaces the "Upload & Process" button with a clear warning: "Ora didn't hear any speech." The only option is Discard. No hollow email will ever go out.
 
-CHANGED: The alarm banner. When the mic dies, the banner appears once and stays put until you tap CONTINUE RECORDING or SAVE. No more flicker cycle. Diagnostic log is still one tap away for post-mortem analysis (Build 103 feature).
+Belt-and-suspenders: even if some code path reaches uploadMeeting with empty content, it will now bail out cleanly instead of firing off an empty email.
 
-Carries forward: transcript survives interruptions, share audio button, transcript recovery, forceRestart zombie-engine recovery, diagnostic logging with COPY LOG and long-press-orb log viewer.
+Carries forward all Build 100-104 fixes: transcript recovery, share audio, force-restart zombie engine, diagnostic logging, no more banner-flicker, always-visible CONTINUE RECORDING button, background audio for app-switch survival.
