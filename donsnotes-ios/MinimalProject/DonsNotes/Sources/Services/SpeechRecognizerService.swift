@@ -49,8 +49,12 @@ final class SpeechRecognizerService: ObservableObject {
     // MARK: - Public API
 
     func startListening(resume: Bool = false) {
+        RecordingDiagnostics.shared.log(.engine, "startListening(resume: \(resume)) called; isListening=\(isListening)")
         // Refuse re-entry.
-        guard !isListening else { return }
+        guard !isListening else {
+            RecordingDiagnostics.shared.log(.engine, "startListening GUARD tripped (already listening) — no-op")
+            return
+        }
 
         // Build 100: When resuming after an interruption (phone call, Siri, alarm, AirPods),
         // DO NOT clear the transcript — we want to preserve everything captured before the
@@ -99,7 +103,11 @@ final class SpeechRecognizerService: ObservableObject {
     }
 
     func stopListening() {
-        guard isListening else { return }
+        RecordingDiagnostics.shared.log(.engine, "stopListening called; isListening=\(isListening)")
+        guard isListening else {
+            RecordingDiagnostics.shared.log(.engine, "stopListening GUARD tripped (not listening) — no-op")
+            return
+        }
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
@@ -133,6 +141,7 @@ final class SpeechRecognizerService: ObservableObject {
     /// Preserves the transcript when resume=true (same semantics as
     /// startListening(resume:)).
     func forceRestart(resume: Bool = true, completion: (() -> Void)? = nil) {
+        RecordingDiagnostics.shared.log(.force, "forceRestart(resume: \(resume)) STEP 1: cancel task; isListening=\(isListening), engine.isRunning=\(audioEngine.isRunning)")
         // 1. Cancel any in-flight recognition task FIRST so the silence-timeout
         //    error handler can't race in and call beginRecording() while we're
         //    tearing down. Only after that do we bypass the isListening guard.
@@ -140,25 +149,31 @@ final class SpeechRecognizerService: ObservableObject {
         recognitionTask = nil
         recognitionRequest?.endAudio()
         recognitionRequest = nil
+        RecordingDiagnostics.shared.log(.force, "STEP 2: force isListening=true then stopListening()")
         isListening = true  // ensure stopListening() below actually runs
         stopListening()
 
         // 2. Tear down the audio session explicitly. This is critical — a
         //    phone call leaves iOS thinking another process owns the mic, and
         //    only setActive(false) tells iOS to reclaim it for us.
+        RecordingDiagnostics.shared.log(.force, "STEP 3: setActive(false, notifyOthersOnDeactivation)")
         do {
             try AVAudioSession.sharedInstance().setActive(
                 false,
                 options: .notifyOthersOnDeactivation
             )
+            RecordingDiagnostics.shared.log(.session, "setActive(false) succeeded")
         } catch {
             // Non-fatal — iOS may have already released it. Log and continue.
+            RecordingDiagnostics.shared.log(.error, "forceRestart: setActive(false) failed: \(error)")
             print("[Ora] forceRestart: setActive(false) failed: \(error)")
         }
 
         // 3. Wait 500ms for iOS to drop the session, then restart fresh.
+        RecordingDiagnostics.shared.log(.force, "STEP 4: sleep 500ms then startListening(resume: \(resume))")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self else { return }
+            RecordingDiagnostics.shared.log(.force, "STEP 5: teardown wait complete; calling startListening")
             self.startListening(resume: resume)
             completion?()
         }
@@ -173,6 +188,7 @@ final class SpeechRecognizerService: ObservableObject {
     }
 
     private func beginRecording() throws {
+        RecordingDiagnostics.shared.log(.engine, "beginRecording() enter; engine.isRunning=\(audioEngine.isRunning)")
         // Unconditional teardown — safe no-op when nothing is running yet.
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -182,6 +198,7 @@ final class SpeechRecognizerService: ObservableObject {
 
         // ONE session for recognition AND file write.
         let session = AVAudioSession.sharedInstance()
+        RecordingDiagnostics.shared.log(.session, "setCategory playAndRecord + setActive(true)")
         try session.setCategory(.playAndRecord, mode: .measurement,
                                 options: [.duckOthers, .defaultToSpeaker, .allowBluetooth])
         try session.setActive(true, options: .notifyOthersOnDeactivation)
@@ -217,6 +234,7 @@ final class SpeechRecognizerService: ObservableObject {
                 if nsErr.code == 1110 {
                     // Silence timeout — restart quietly WITHOUT dropping isListening.
                     DispatchQueue.main.async {
+                        RecordingDiagnostics.shared.log(.recognizer, "silence timeout (code 1110); auto-restart beginRecording")
                         if self.isListening { try? self.beginRecording() }
                     }
                 } else {
@@ -251,8 +269,13 @@ final class SpeechRecognizerService: ObservableObject {
 
         // ALWAYS remove before install (done above too) — single tap, three jobs.
         inputNode.removeTap(onBus: 0)
+        RecordingDiagnostics.shared.log(.engine, "installTap on inputNode; sampleRate=\(inputFormat.sampleRate)")
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
+            // Build 103: log the first buffer only so we don't spam the log.
+            if self.lastAudioBufferAt == nil {
+                RecordingDiagnostics.shared.log(.engine, "FIRST BUFFER received; tap is live")
+            }
             // Build 100: proof-of-life timestamp so RecordingView can detect a dead
             // audio engine. Any real audio buffer arriving here updates it.
             self.lastAudioBufferAt = Date()
@@ -274,6 +297,7 @@ final class SpeechRecognizerService: ObservableObject {
         audioEngine.prepare()
         try audioEngine.start()
         isListening = true
+        RecordingDiagnostics.shared.log(.engine, "audioEngine.start() succeeded; isListening=true")
     }
 }
 
