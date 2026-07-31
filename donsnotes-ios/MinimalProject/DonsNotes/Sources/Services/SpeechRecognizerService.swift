@@ -274,7 +274,7 @@ final class SpeechRecognizerService: ObservableObject {
                     }
                 } else {
                     DispatchQueue.main.async {
-                        RecordingDiagnostics.shared.log(.recognizer, "FATAL error code=\(nsErr.code) \u2192 tearing down engine; isListening=false")
+                        RecordingDiagnostics.shared.log(.recognizer, "FATAL error code=\(nsErr.code) -> tearing down engine; isListening=false")
                         if self.audioEngine.isRunning { self.audioEngine.stop() }
                         self.audioEngine.inputNode.removeTap(onBus: 0)
                         self.recognitionRequest = nil
