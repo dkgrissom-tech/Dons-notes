@@ -55,6 +55,16 @@
     <string>We use speech recognition to transcribe your meetings and enable voice commands.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <!-- Build 104: background audio entitlement.
+         Lets Ora keep recording when the user switches to Calendar / Mail /
+         Messages or locks the screen. iOS displays the red mic pill in the
+         status bar so the user always knows recording is live.
+         Approved use case: voice / meeting recorder. Same entitlement used
+         by Otter, Fireflies, Rev, Voice Memos, Apple Notes voice memos, etc. -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
     <key>UIApplicationShortcutItems</key>
     <array>
         <dict>

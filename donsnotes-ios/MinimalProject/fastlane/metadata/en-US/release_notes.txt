@@ -1,13 +1,13 @@
-Build 103 — Diagnostic logging for post-mortem analysis
+Build 104 — Big fix + big feature. This one changes everything.
 
-Adds a full instrumentation layer so the next time a recording fails, we can see exactly which step tripped instead of guessing.
+FIXED: The banner-flicker bug. When the audio engine died, an automatic retry loop was fighting itself — banner on, banner off, banner on, over and over. It's gone. Recording now behaves predictably.
 
-• NEW: In-memory diagnostic log captures every recording-lifecycle event with millisecond timestamps — call state transitions, audio session activate/deactivate, engine start/stop, tap install, first buffer received, retry ladder attempts, alarm triggers, RETRY/SAVE button taps, forceRestart step-by-step trace.
+NEW: A big CONTINUE RECORDING button lives on the main recording screen at all times. Tap it any time you suspect something's off — the app instantly force-restarts the mic. No hunting through menus, no waiting for the alarm banner.
+  • When everything is healthy, the button is subtle gray so it doesn't distract.
+  • When audio has stopped, the button turns bold red so you can't miss it.
 
-• NEW: When the red RECORDING STOPPED alarm banner appears, a third button "COPY DIAGNOSTIC LOG" now sits under SAVE/RETRY. Tap it to copy the full log to the iPhone clipboard, then paste it into Notes/Messages/Mail and send it back for analysis.
+NEW: Background audio. Ora now keeps recording when you check your Calendar, open Messages, look at Slack, or lock your screen. The iOS red mic pill stays visible in the status bar so you always know recording is live. This is the same permission voice memo apps use — meetings survive the moment you glance at another app.
 
-• NEW: Long-press the recording orb for 3 seconds any time (even during a healthy recording) to open a full-screen diagnostic log viewer. Includes a Share button that hands the log off to AirDrop, Mail, Messages, or iCloud Drive.
+CHANGED: The alarm banner. When the mic dies, the banner appears once and stays put until you tap CONTINUE RECORDING or SAVE. No more flicker cycle. Diagnostic log is still one tap away for post-mortem analysis (Build 103 feature).
 
-• Log is capped at 500 entries with a ring buffer so long meetings don't grow unbounded. Zero performance impact on the hot audio callback path.
-
-• Carries forward all Build 100-102 fixes: transcript survives interruptions, share audio button, recording-health alarm with red banner, transcript recovery on relaunch, forceRestart zombie-engine recovery, extended retry ladder, background auto-retry with spinner and success haptic.
+Carries forward: transcript survives interruptions, share audio button, transcript recovery, forceRestart zombie-engine recovery, diagnostic logging with COPY LOG and long-press-orb log viewer.
