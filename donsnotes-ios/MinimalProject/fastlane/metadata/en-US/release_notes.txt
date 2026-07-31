@@ -1,12 +1,11 @@
-Build 100 — Reliability + Audio Export (critical)
+Build 101 — Auto-resume after declined calls
 
-ORA WILL NEVER SILENTLY LOSE A MEETING AGAIN.
+THE ONE MISSING PIECE FROM BUILD 100 IS FIXED.
 
-• FIXED: Transcript now truly survives phone calls, Siri, alarms, and AirPods swaps — the audio engine restart no longer wipes what was captured before the interruption.
-• FIXED: The recording timer used to keep counting even when audio capture had died. Now the counter is gated on real audio buffers arriving at the mic. If capture stops, the counter freezes.
-• FIXED: When a declined phone call killed the audio session, Ora used to pretend everything was fine. Now Ora tries 3 escalating retries to restart the engine (0.8s / 1.5s / 2.5s). If all fail, a RED alarm banner appears with a haptic buzz — no more silent failures.
-• NEW: Every-second recording health check. If audio dies for any reason (background kill, mic fault, USB disconnect), you'll see a red "RECORDING STOPPED" banner within 5 seconds with two options: SAVE WHAT'S CAPTURED (finalize the meeting with the partial transcript) or RETRY (reboot the engine).
-• NEW: "Share Audio File" button on every meeting detail view. AirDrop, email, or save the raw recording to iCloud Drive — perfect for recovering older meetings, or handing audio off for external transcription.
-• NEW: Automatic transcript recovery on relaunch. If iOS ever kills Ora mid-meeting (memory pressure, force-quit, restart), the next time you open the app you'll see a prompt showing how many words were captured and offering to finalize it as a completed meeting — with a full Groq-generated summary and action items. No more losing an entire meeting to an unexpected crash.
-• If you experienced a blank recap before this build, your audio file is still saved on-device — open the meeting, tap "Share Audio File", and back it up immediately.
-• No other functional changes. Speaker ID, Ask Ora, and follow-up emails work as in Build 99.
+Build 100 correctly detected that audio didn't restart after a declined phone call and showed the red alarm banner — but on many devices iOS takes 4-8 seconds to release the audio session after a declined call, longer than Build 100's 3 retries would wait. Build 101 fixes that.
+
+• FIXED: Post-call retry ladder extended from 3 attempts (0.8s/1.5s/2.5s = 4.8s) to 5 attempts (1s/2s/4s/7s/12s = 26s). This covers even worst-case declined-call teardowns on WiFi Calling and Do Not Disturb.
+• NEW: Background auto-retry loop. When the RECORDING STOPPED alarm fires, Ora now silently keeps trying to restart the audio engine every 3 seconds for up to 60 seconds. The moment audio buffers flow again, the banner dismisses itself, you get a success haptic, and recording continues — no button tap required.
+• UPDATED: Alarm banner now says "Trying to resume automatically..." with a spinner while the background loop is running. The SAVE and RETRY buttons remain available for manual override.
+• Same behavior applies to the every-second health check: if audio dies unexpectedly (not just from a call), Ora will try to recover in the background before giving up.
+• All Build 100 fixes are still in place: transcript survives interruptions, share audio button, recording-health monitoring, transcript recovery on relaunch.
