@@ -1,11 +1,13 @@
-Build 101 — Auto-resume after declined calls
+Build 102 — Zombie-engine recovery (the actual fix)
 
-THE ONE MISSING PIECE FROM BUILD 100 IS FIXED.
+Build 100 and 101 both missed the underlying root cause: when the audio engine dies from a phone call, the internal isListening flag can get stuck at true. In that state, both startListening (guards on !isListening) and stopListening (guards on isListening) silently no-op. RETRY didn't work. Auto-resume didn't work.
 
-Build 100 correctly detected that audio didn't restart after a declined phone call and showed the red alarm banner — but on many devices iOS takes 4-8 seconds to release the audio session after a declined call, longer than Build 100's 3 retries would wait. Build 101 fixes that.
+Build 102 adds a new forceRestart path that bypasses these guards, explicitly deactivates the AVAudioSession to force iOS to release the mic, waits for teardown, and starts a fresh recording session — while preserving the transcript captured before the call.
 
-• FIXED: Post-call retry ladder extended from 3 attempts (0.8s/1.5s/2.5s = 4.8s) to 5 attempts (1s/2s/4s/7s/12s = 26s). This covers even worst-case declined-call teardowns on WiFi Calling and Do Not Disturb.
-• NEW: Background auto-retry loop. When the RECORDING STOPPED alarm fires, Ora now silently keeps trying to restart the audio engine every 3 seconds for up to 60 seconds. The moment audio buffers flow again, the banner dismisses itself, you get a success haptic, and recording continues — no button tap required.
-• UPDATED: Alarm banner now says "Trying to resume automatically..." with a spinner while the background loop is running. The SAVE and RETRY buttons remain available for manual override.
-• Same behavior applies to the every-second health check: if audio dies unexpectedly (not just from a call), Ora will try to recover in the background before giving up.
-• All Build 100 fixes are still in place: transcript survives interruptions, share audio button, recording-health monitoring, transcript recovery on relaunch.
+Wired into every recovery path:
+• Manual RETRY button — now uses forceRestart
+• Post-call escalating retry ladder — attempts 3, 4, 5 escalate to forceRestart
+• Background auto-resume loop while the alarm banner is up — uses forceRestart every 3 seconds
+• Same code path is used for background app kills, mic hardware faults, and USB audio disconnects
+
+Also carries forward all Build 100 and 101 fixes: transcript survives interruptions, share audio button, recording-health monitoring with red alarm banner, transcript recovery on relaunch, extended retry ladder (5 attempts up to 12s), background auto-retry every 3s for 60s with a spinner and success haptic.

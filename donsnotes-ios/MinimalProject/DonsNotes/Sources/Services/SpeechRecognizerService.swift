@@ -116,6 +116,54 @@ final class SpeechRecognizerService: ObservableObject {
         }
     }
 
+    /// Build 101: Hard restart for zombie-engine recovery. Used when the audio
+    /// engine is dead but isListening got stuck at true — a state neither
+    /// startListening (guards on !isListening) nor stopListening (guards on
+    /// isListening) can fully recover from on their own.
+    ///
+    /// Sequence:
+    ///   1. Force isListening=false so stopListening() will actually run.
+    ///   2. Tear down audio engine, recognition task, tap, and file.
+    ///   3. Explicitly deactivate the AVAudioSession to force iOS to release
+    ///      the mic hardware (this is what a phone call blocks — Build 100's
+    ///      startListening(resume:) never called this).
+    ///   4. Wait 500ms for iOS to actually drop the session.
+    ///   5. Call startListening(resume:) fresh.
+    ///
+    /// Preserves the transcript when resume=true (same semantics as
+    /// startListening(resume:)).
+    func forceRestart(resume: Bool = true, completion: (() -> Void)? = nil) {
+        // 1. Cancel any in-flight recognition task FIRST so the silence-timeout
+        //    error handler can't race in and call beginRecording() while we're
+        //    tearing down. Only after that do we bypass the isListening guard.
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+        isListening = true  // ensure stopListening() below actually runs
+        stopListening()
+
+        // 2. Tear down the audio session explicitly. This is critical — a
+        //    phone call leaves iOS thinking another process owns the mic, and
+        //    only setActive(false) tells iOS to reclaim it for us.
+        do {
+            try AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+        } catch {
+            // Non-fatal — iOS may have already released it. Log and continue.
+            print("[Ora] forceRestart: setActive(false) failed: \(error)")
+        }
+
+        // 3. Wait 500ms for iOS to drop the session, then restart fresh.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            self.startListening(resume: resume)
+            completion?()
+        }
+    }
+
     // MARK: - Internal
 
     private func makeOutputURL() -> URL {

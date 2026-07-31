@@ -529,13 +529,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                     .cornerRadius(LM.Radius.sm)
                             }
                             Button {
-                                // Manual retry — clear the alarm and try to reboot the engine.
+                                // Manual retry — hard-restart the audio engine.
+                                // Build 101: use forceRestart so we bypass the zombie
+                                // isListening=true state that makes startListening a no-op.
                                 cancelAutoResumeLoop()
                                 recordingHealthAlarm = false
                                 deadEngineTicks = 0
-                                if !speechService.isListening {
-                                    speechService.startListening(resume: true)
-                                }
+                                speechService.forceRestart(resume: true)
                                 lumen.orbState = .listening
                             } label: {
                                 Text("RETRY")
@@ -724,9 +724,17 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         for (i, delay) in delays.enumerated() {
                             resumeRetryCount = i + 1
                             try? await Task.sleep(nanoseconds: delay)
-                            if !speechService.isListening {
-                                // resume=true preserves the pre-call transcript.
-                                speechService.startListening(resume: true)
+                            // Build 101: attempts 1-2 use gentle startListening. Attempts
+                            // 3-5 escalate to forceRestart because by then the mic is
+                            // clearly zombied and needs an explicit audio-session teardown.
+                            if i < 2 {
+                                if !speechService.isListening {
+                                    speechService.startListening(resume: true)
+                                }
+                            } else {
+                                speechService.forceRestart(resume: true)
+                                // Extra 600ms for forceRestart's own 500ms teardown delay.
+                                try? await Task.sleep(nanoseconds: 600_000_000)
                             }
                             // Wait briefly for the tap to start delivering buffers.
                             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -804,11 +812,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
                 if Task.isCancelled { return }
                 // If the user already handled it (Save / manual Retry), bail.
                 if !recordingHealthAlarm { return }
-                if !speechService.isListening {
-                    speechService.startListening(resume: true)
-                }
-                // Give the tap ~600ms to start delivering buffers before checking.
-                try? await Task.sleep(nanoseconds: 600_000_000)
+                // Build 101: use forceRestart in the background loop — by definition
+                // we're in zombie state (alarm is up because engine died), so a plain
+                // startListening will hit the isListening guard and no-op forever.
+                speechService.forceRestart(resume: true)
+                // forceRestart has its own internal 500ms teardown delay, plus tap
+                // startup latency. Give it 1.2s total before checking.
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
                 if Task.isCancelled { return }
                 if speechService.isCapturingAudio {
                     // Recovered on its own — dismiss alarm, resume normal state.
