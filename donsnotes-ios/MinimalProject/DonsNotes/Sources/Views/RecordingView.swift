@@ -34,6 +34,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
     @State private var phoneCallBannerVisible: Bool = false     // Build 91: banner shown during call
     // Build 100: recording-health alarm state — fires when audio engine dies silently
     @State private var recordingHealthAlarm: Bool = false
+    @State private var autoResumeTask: Task<Void, Never>? = nil     // Build 101: background retry while banner is up
     @State private var recordingHaltReason: String = ""
     @State private var resumeRetryCount: Int = 0
     @State private var deadEngineTicks: Int = 0
@@ -496,6 +497,13 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                             Spacer()
+                            // Build 101: spinner while background auto-resume is running,
+                            // so the user sees Ora is actively trying to recover.
+                            if autoResumeTask != nil {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                            }
                         }
                         HStack(spacing: 10) {
                             Button {
@@ -504,6 +512,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                 // audio file gets closed cleanly. stopRecording() sets
                                 // speechService.recordingURL to the finalized m4a, which
                                 // uploadMeeting needs as its input.
+                                cancelAutoResumeLoop()
                                 recordingHealthAlarm = false
                                 stopRecording()
                                 if let url = speechService.recordingURL {
@@ -521,6 +530,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                             }
                             Button {
                                 // Manual retry — clear the alarm and try to reboot the engine.
+                                cancelAutoResumeLoop()
                                 recordingHealthAlarm = false
                                 deadEngineTicks = 0
                                 if !speechService.isListening {
@@ -694,12 +704,22 @@ struct RecordingView<T: APIServiceProtocol>: View {
                     phoneCallBannerVisible = false
                     if resumeAfterInterruption {
                         resumeAfterInterruption = false
-                        // Build 100: Escalating retry — declined calls (Incoming
-                        // → Disconnected without ever reaching Connected) don't
-                        // release the audio session as reliably as ended calls do.
-                        // Try up to 3 times: 0.8s, 1.5s, 2.5s. If all fail, fire
-                        // the recording-health alarm so the user isn't lied to.
-                        let delays: [UInt64] = [800_000_000, 1_500_000_000, 2_500_000_000]
+                        // Build 101: Extended retry ladder — declined cellular calls
+                        // can take iOS 4-8 seconds to release the audio session (much
+                        // longer than answered-then-hung-up calls). Build 100's
+                        // 0.8/1.5/2.5s ladder gave up before iOS was ready. Now:
+                        // 1s, 2s, 4s, 7s, 12s — total wait ~26s covers even worst-case
+                        // WiFi-calling / Do Not Disturb teardowns. If all 5 fail, the
+                        // alarm banner fires AND launches a background auto-retry that
+                        // keeps trying every 3s so the user can just wait and watch
+                        // recording resume on its own.
+                        let delays: [UInt64] = [
+                            1_000_000_000,
+                            2_000_000_000,
+                            4_000_000_000,
+                            7_000_000_000,
+                            12_000_000_000,
+                        ]
                         var resumed = false
                         for (i, delay) in delays.enumerated() {
                             resumeRetryCount = i + 1
@@ -709,7 +729,7 @@ struct RecordingView<T: APIServiceProtocol>: View {
                                 speechService.startListening(resume: true)
                             }
                             // Wait briefly for the tap to start delivering buffers.
-                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            try? await Task.sleep(nanoseconds: 500_000_000)
                             if speechService.isCapturingAudio {
                                 resumed = true
                                 break
@@ -717,14 +737,16 @@ struct RecordingView<T: APIServiceProtocol>: View {
                         }
                         resumeRetryCount = 0
                         if !resumed {
-                            // Audio engine is dead. Halt loudly — do NOT let the
-                            // counter keep ticking as if everything is fine.
-                            recordingHaltReason = "Recording didn't restart after your phone call. Tap Save to keep what was captured before the call."
+                            // Audio engine still dead after ~26s of escalating retries.
+                            // Fire the alarm AND start the silent background auto-retry
+                            // loop so the user gets automatic recovery if iOS releases
+                            // the session late.
+                            recordingHaltReason = "Recording didn't restart after your phone call yet. Trying to resume automatically…"
                             recordingHealthAlarm = true
                             lumen.orbState = .idle
-                            // Haptic — users need to feel this failure, not just see it.
                             let generator = UINotificationFeedbackGenerator()
                             generator.notificationOccurred(.error)
+                            startAutoResumeLoop()
                         }
                     }
                 default:
@@ -754,17 +776,64 @@ struct RecordingView<T: APIServiceProtocol>: View {
             deadEngineTicks += 1
             if deadEngineTicks >= 5 {
                 // 5 seconds of no audio buffers while supposedly listening = dead.
-                recordingHaltReason = "Recording stopped unexpectedly. Tap Save to keep what was captured so far."
+                recordingHaltReason = "Recording stopped unexpectedly. Trying to resume automatically…"
                 recordingHealthAlarm = true
                 lumen.orbState = .idle
                 let generator = UINotificationFeedbackGenerator()
                 generator.notificationOccurred(.error)
                 deadEngineTicks = 0
+                // Build 101: also kick off the background auto-retry loop from
+                // this dead-engine path (not just phone-call disconnect).
+                startAutoResumeLoop()
             }
         }
     }
 
+    /// Build 101: Silent background retry loop that runs while the alarm banner
+    /// is showing. Tries startListening(resume: true) every 3 seconds. On the
+    /// first attempt where real audio buffers flow, dismisses the banner, gives
+    /// a soft success haptic, and lets the meeting continue.
+    ///
+    /// Cancellation: manual RETRY / SAVE / stopRecording call cancelAutoResumeLoop().
+    /// Also self-cancels after 20 attempts (~60 seconds) to avoid running forever.
+    func startAutoResumeLoop() {
+        cancelAutoResumeLoop()  // never allow two loops in flight
+        autoResumeTask = Task { @MainActor in
+            for _ in 0..<20 {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                if Task.isCancelled { return }
+                // If the user already handled it (Save / manual Retry), bail.
+                if !recordingHealthAlarm { return }
+                if !speechService.isListening {
+                    speechService.startListening(resume: true)
+                }
+                // Give the tap ~600ms to start delivering buffers before checking.
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                if Task.isCancelled { return }
+                if speechService.isCapturingAudio {
+                    // Recovered on its own — dismiss alarm, resume normal state.
+                    recordingHealthAlarm = false
+                    lumen.orbState = .listening
+                    deadEngineTicks = 0
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    return
+                }
+            }
+            // Ran out of attempts — update the banner to stop promising recovery.
+            if recordingHealthAlarm {
+                recordingHaltReason = "Recording didn't restart after your phone call. Tap Save to keep what was captured before the call."
+            }
+        }
+    }
+
+    func cancelAutoResumeLoop() {
+        autoResumeTask?.cancel()
+        autoResumeTask = nil
+    }
+
     func stopRecording() {
+        cancelAutoResumeLoop()
         speechService.stopListening()
         recordingTimer?.invalidate()
         recordingTimer = nil
