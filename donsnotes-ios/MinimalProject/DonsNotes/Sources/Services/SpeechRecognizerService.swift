@@ -113,6 +113,15 @@ final class SpeechRecognizerService: ObservableObject {
             RecordingDiagnostics.shared.log(.engine, "stopListening GUARD tripped (not listening) — no-op")
             return
         }
+        // Build 110: freeze the accumulated transcript BEFORE canceling the
+        // recognition task. Cancel delivers a final callback with
+        // kLSRErrorDomain code 301 whose result.bestTranscription.formattedString
+        // is empty; if that callback races us on the main queue, the
+        // result-processing block below (in beginRecording) would overwrite
+        // fullTranscript/transcript with "", producing an empty recap email.
+        // See diagnostic log: transcript=589 chars at stopListening, 0 chars
+        // 2.2s later at uploadMeeting. We snapshot, tear down, then restore.
+        let frozenTranscript = fullTranscript
         if audioEngine.isRunning { audioEngine.stop() }
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
@@ -120,6 +129,10 @@ final class SpeechRecognizerService: ObservableObject {
         recognitionTask?.cancel()
         recognitionTask = nil
         isListening = false
+        // Build 110: restore the pre-cancel transcript in case a stray callback
+        // beat the teardown. Safe no-op when nothing raced us.
+        fullTranscript = frozenTranscript
+        transcript = frozenTranscript
         audioLevel = 0
         lastAudioBufferAt = nil  // Build 100: reset proof-of-life on clean stop
         // Close the file and surface its URL for upload.
@@ -244,7 +257,17 @@ final class SpeechRecognizerService: ObservableObject {
                 RecordingDiagnostics.shared.log(.recognizer, "FIRST callback fired: result=\(result != nil ? "non-nil" : "nil") words=\(words) err=\(err.map { "\(($0 as NSError).code)" } ?? "nil")")
             }
 
-            if let result = result {
+            if let result = result, !result.bestTranscription.formattedString.isEmpty {
+                // Build 110: NEVER overwrite the accumulated transcript with an
+                // empty result. Apple's SFSpeechRecognizer delivers a final
+                // callback on task cancellation (kLSRErrorDomain 301) whose
+                // bestTranscription.formattedString is "". Without this guard,
+                // that final callback races stopListening on the main queue
+                // and wipes a full-session transcript (127 words → 0) between
+                // stopListening and uploadMeeting. Skipping the mutation is
+                // safe: cumulative results from a live recognizer are never
+                // empty — the recognizer only emits "" when it's being torn
+                // down.
                 let segmentText = result.bestTranscription.formattedString
                 let combined = baseAtStart.isEmpty ? segmentText : baseAtStart + " " + segmentText
                 DispatchQueue.main.async {
