@@ -44,7 +44,9 @@ final class RecordingDiagnostics: ObservableObject {
     private let maxEntries = 500
     // Serial queue for append; reads copy the array on the main actor.
     private let queue = DispatchQueue(label: "com.ora.diagnostics", qos: .utility)
-    private var _entries: [Entry] = []
+    // Note: cannot name this `_entries` — that collides with the synthesized
+    // storage of the @Published property below.
+    private var buffer: [Entry] = []
 
     /// Published copy for SwiftUI viewers.
     @Published private(set) var entries: [Entry] = []
@@ -63,11 +65,11 @@ final class RecordingDiagnostics: ObservableObject {
     func log(_ category: DiagnosticCategory, _ message: String) {
         let entry = Entry(timestamp: Date(), category: category, message: message)
         queue.async {
-            self._entries.append(entry)
-            if self._entries.count > self.maxEntries {
-                self._entries.removeFirst(self._entries.count - self.maxEntries)
+            self.buffer.append(entry)
+            if self.buffer.count > self.maxEntries {
+                self.buffer.removeFirst(self.buffer.count - self.maxEntries)
             }
-            let snapshot = self._entries
+            let snapshot = self.buffer
             DispatchQueue.main.async {
                 self.entries = snapshot
             }
@@ -98,7 +100,7 @@ final class RecordingDiagnostics: ObservableObject {
     /// log isn't polluted by the previous one.
     func clear() {
         queue.async {
-            self._entries = []
+            self.buffer = []
             DispatchQueue.main.async {
                 self.entries = []
             }
