@@ -1,5 +1,5 @@
-Build 106 — revert Build 105.
+Build 107 — speech-recognizer visibility.
 
-Build 105's transcript-preview + empty-warning logic incorrectly flagged real recordings as empty. Rolled back to Build 104 behavior on the upload screen: RECORDING COMPLETE + Upload & Process button + Discard.
+Recording behavior is unchanged from Build 106. This build adds diagnostic logs so we can see whether Apple's speech recognizer is producing results.
 
-All Build 100-104 fixes remain in place: transcript recovery, share audio, force-restart zombie engine, diagnostic logging, no more banner-flicker, always-visible CONTINUE RECORDING button, background audio.
+If your next recording ends with an empty email, long-press the orb 3 seconds and share the diagnostic log — the SPEECH entries will show exactly where the transcription pipeline died.

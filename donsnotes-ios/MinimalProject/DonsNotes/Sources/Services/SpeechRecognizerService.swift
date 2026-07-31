@@ -103,7 +103,12 @@ final class SpeechRecognizerService: ObservableObject {
     }
 
     func stopListening() {
-        RecordingDiagnostics.shared.log(.engine, "stopListening called; isListening=\(isListening)")
+        // Build 107: log the transcript state at stop time so we can see whether
+        // it was empty when the user hit stop — which directly explains the
+        // empty-recap-email bug. Length + word count is enough; we don't dump
+        // the whole transcript into the diagnostic log.
+        let wordCount = transcript.split(separator: " ").count
+        RecordingDiagnostics.shared.log(.engine, "stopListening called; isListening=\(isListening); transcript=\(transcript.count) chars, \(wordCount) words")
         guard isListening else {
             RecordingDiagnostics.shared.log(.engine, "stopListening GUARD tripped (not listening) — no-op")
             return
@@ -215,8 +220,29 @@ final class SpeechRecognizerService: ObservableObject {
         // Snapshot the cumulative transcript so a restart appends rather than resets.
         let baseAtStart = fullTranscript
 
+        // Build 107: Diagnostic visibility into the speech-recognition callback.
+        // Every previous build's log showed a healthy audio engine (FIRST BUFFER
+        // received, tap live) but empty transcripts on stop. Now we log:
+        //   - FIRST callback fire (proves recognitionTask is receiving results)
+        //   - Every ~5 seconds after that (rate-limited to avoid spam)
+        //   - Every error, including the code
+        //   - The word count at end-of-session (final callback)
+        // If the SPEECH log stays silent while ENGINE says FIRST BUFFER received,
+        // we know Apple's SFSpeechRecognizer isn't producing results at all.
+        var firstCallbackLogged = false
+        var lastLogTime = Date(timeIntervalSince1970: 0)
+        RecordingDiagnostics.shared.log(.recognizer, "recognitionTask installed; awaiting first callback")
+
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, err in
             guard let self = self else { return }
+
+            // Build 107: log the very first callback so we can see whether the
+            // recognizer is producing results at all.
+            if !firstCallbackLogged {
+                firstCallbackLogged = true
+                let words = result?.bestTranscription.formattedString.split(separator: " ").count ?? 0
+                RecordingDiagnostics.shared.log(.recognizer, "FIRST callback fired: result=\(result != nil ? "non-nil" : "nil") words=\(words) err=\(err.map { "\(($0 as NSError).code)" } ?? "nil")")
+            }
 
             if let result = result {
                 let segmentText = result.bestTranscription.formattedString
@@ -225,12 +251,21 @@ final class SpeechRecognizerService: ObservableObject {
                     self.fullTranscript = combined
                     self.transcript = combined
                 }
+                // Build 107: rate-limited progress log (every ~5 seconds)
+                let now = Date()
+                if now.timeIntervalSince(lastLogTime) >= 5.0 {
+                    lastLogTime = now
+                    let words = combined.split(separator: " ").count
+                    RecordingDiagnostics.shared.log(.recognizer, "progress: \(words) words total (isFinal=\(result.isFinal))")
+                }
             }
 
             let isFinal = result?.isFinal ?? false
 
             if let err = err {
                 let nsErr = err as NSError
+                // Build 107: log every error unconditionally with code
+                RecordingDiagnostics.shared.log(.recognizer, "callback ERROR: code=\(nsErr.code) domain=\(nsErr.domain) desc=\(nsErr.localizedDescription)")
                 if nsErr.code == 1110 {
                     // Silence timeout — restart quietly WITHOUT dropping isListening.
                     DispatchQueue.main.async {
@@ -239,6 +274,7 @@ final class SpeechRecognizerService: ObservableObject {
                     }
                 } else {
                     DispatchQueue.main.async {
+                        RecordingDiagnostics.shared.log(.recognizer, "FATAL error code=\(nsErr.code) \u2192 tearing down engine; isListening=false")
                         if self.audioEngine.isRunning { self.audioEngine.stop() }
                         self.audioEngine.inputNode.removeTap(onBus: 0)
                         self.recognitionRequest = nil
@@ -247,6 +283,9 @@ final class SpeechRecognizerService: ObservableObject {
                     }
                 }
             } else if isFinal {
+                // Build 107: log final callback so we can see when segments finalize
+                let finalWords = result?.bestTranscription.formattedString.split(separator: " ").count ?? 0
+                RecordingDiagnostics.shared.log(.recognizer, "segment FINAL: \(finalWords) words; restarting beginRecording")
                 DispatchQueue.main.async {
                     if self.isListening { try? self.beginRecording() }
                 }
