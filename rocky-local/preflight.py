@@ -121,7 +121,7 @@ for label, binary in [("ffmpeg", "ffmpeg"), ("git", "git"), ("node", "node"),
     line(OK if present else BAD, label, ver or ("found" if present else "not found"))
 
 for mod in ["faster_whisper", "piper", "sounddevice", "soundfile",
-            "numpy", "pynput"]:
+            "numpy"]:
     try:
         __import__(mod)
         report[f"py:{mod}"] = True

@@ -2,8 +2,19 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# Windows consoles often default to a legacy codepage (cp1252) that can't
+# encode characters like em dashes or bullets. A print() that hits one of
+# those raises UnicodeEncodeError — and if that happens inside a C callback
+# (e.g. the sounddevice audio thread), Python silently drops the exception,
+# so any code after the failed print() (like queuing captured audio) never
+# runs. Force UTF-8 everywhere, regardless of which module is the entry point.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -49,8 +60,9 @@ class Config:
                                            "pNInz6obpgDQGcFmaJgB")
     max_speak_chars: int = _int("MAX_SPEAK_CHARS", 900)
 
-    # --- push to talk ---
-    hotkey: str = os.environ.get("HOTKEY", "ctrl_r")
+    # --- voice activation (no hotkey — the mic itself decides) ---
+    vad_threshold: float = float(os.environ.get("VAD_THRESHOLD", "0.02"))
+    vad_silence_ms: int = _int("VAD_SILENCE_MS", 800)
     min_hold_ms: int = _int("MIN_HOLD_MS", 250)
     max_record_s: int = _int("MAX_RECORD_S", 60)
 

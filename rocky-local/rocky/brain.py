@@ -35,7 +35,7 @@ class Brain:
             )
 
     def _cmd(self, prompt: str) -> list[str]:
-        cmd = [CFG.claude_bin, "-p", prompt,
+        cmd = [CFG.claude_bin, "-p", (prompt.replace("\n", " ") if sys.platform.startswith("win") else prompt),
                "--output-format", "json",
                "--allowedTools", CFG.claude_tools]
         if CFG.persist_session and self.session_id:
@@ -47,8 +47,9 @@ class Brain:
         try:
             p = subprocess.run(
                 self._cmd(prompt),
-                capture_output=True, text=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=CFG.claude_cwd, timeout=CFG.claude_timeout,
+                shell=sys.platform.startswith("win"),
             )
         except subprocess.TimeoutExpired:
             return "That took too long, so I stopped it."

@@ -4,11 +4,10 @@ faster-whisper>=1.1.0
 # STEP 3 — local text to speech
 piper-tts>=1.2.0
 
-# audio i/o + hotkey
+# audio i/o
 sounddevice>=0.4.6
 soundfile>=0.12.1
 numpy>=1.24
-pynput>=1.7.7
 
 # only needed if TTS_BACKEND=elevenlabs
 requests>=2.31

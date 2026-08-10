@@ -1,12 +1,17 @@
 """
-STEP 4b / STEP 5 — Push-to-talk loop, end to end.
+STEP 4b / STEP 5 — Voice-activated loop, end to end.
 
-Hold the hotkey (default: right Ctrl) -> speak -> release.
+Just speak -> the mic itself notices and starts capturing -> stop talking
+-> it sends what you said.
     mic -> faster-whisper (local) -> Claude Code -> Piper (local) -> speakers
 
 There is no browser anywhere in this pipeline, which is precisely why the
 permission problems that plague Web Speech API do not exist here. sounddevice
-opens the OS audio device through PortAudio directly.
+opens the OS audio device through PortAudio directly. No global hotkey is
+used — laptop OEM keyboard drivers frequently swallow Ctrl/Fn-row keys
+before they ever reach a Python-level hook, which makes any hotkey-based
+push-to-talk unreliable across machines. Voice-activity detection on the
+raw audio stream sidesteps that entirely.
 
 Start:
     python -m rocky.main
@@ -31,15 +36,16 @@ BANNER = r"""
  |  _ \ / _ \ / ___| |/ /\ \ / /     local voice loop
  | |_) | | | | |   | ' /  \ V /      stt: {stt}  ({dev})
  |  _ <| |_| | |___| . \   | |       tts: {tts}
- |_| \_\\___/ \____|_|\_\  |_|       hotkey: hold {key}
+ |_| \_\\___/ \____|_|\_\  |_|       mode: voice-activated (just speak)
 """
 
 
-class PushToTalk:
+class VoiceLoop:
     def __init__(self):
         self.frames: list[np.ndarray] = []
         self.recording = False
         self.started_at = 0.0
+        self.last_voice_at = 0.0
         self.busy = False           # true while thinking/speaking
         self.jobs: queue.Queue[np.ndarray] = queue.Queue()
         self.brain = Brain()
@@ -49,11 +55,29 @@ class PushToTalk:
     def _callback(self, indata, frames, time_info, status):
         if status:
             print(f"[audio] {status}")
-        if self.recording:
-            self.frames.append(indata[:, 0].copy())
-            if time.time() - self.started_at > CFG.max_record_s:
-                print("[ptt] max length reached")
-                self.stop()
+        if self.busy:
+            return  # don't listen to ourselves while thinking/speaking
+
+        rms = float(np.sqrt(np.mean(np.square(indata[:, 0]))))
+        now = time.time()
+        voiced = rms > CFG.vad_threshold
+
+        if not self.recording:
+            if voiced:
+                self.start()
+                self.last_voice_at = now
+                self.frames.append(indata[:, 0].copy())
+            return
+
+        self.frames.append(indata[:, 0].copy())
+        if voiced:
+            self.last_voice_at = now
+        elif (now - self.last_voice_at) * 1000 > CFG.vad_silence_ms:
+            self.stop()
+            return
+        if now - self.started_at > CFG.max_record_s:
+            print("[vad] max length reached")
+            self.stop()
 
     def open_stream(self):
         self.stream = sd.InputStream(
@@ -65,14 +89,14 @@ class PushToTalk:
             if CFG.input_device is not None else sd.query_devices(kind="input")["name"]
         print(f"[audio] capturing from: {dev}")
 
-    # ------------------------------------------------------------- ptt
+    # ------------------------------------------------------------- vad
     def start(self):
         if self.recording or self.busy:
             return
         self.frames = []
         self.recording = True
         self.started_at = time.time()
-        print("\n[ptt] ● recording — release to send")
+        print("\n[vad] * hearing you...")
 
     def stop(self):
         if not self.recording:
@@ -82,9 +106,9 @@ class PushToTalk:
         audio = np.concatenate(self.frames) if self.frames else np.zeros(0, "float32")
         self.frames = []
         if held_ms < CFG.min_hold_ms:
-            print(f"[ptt] ignored tap ({held_ms:.0f}ms)")
+            print(f"[vad] ignored blip ({held_ms:.0f}ms)")
             return
-        print(f"[ptt] ○ captured {len(audio)/SAMPLE_RATE:.1f}s")
+        print(f"[vad] captured {len(audio)/SAMPLE_RATE:.1f}s")
         self.jobs.put(audio)
 
     # ----------------------------------------------------------- worker
@@ -121,43 +145,26 @@ class PushToTalk:
 
     # ------------------------------------------------------------- run
     def run(self):
-        from pynput import keyboard
-
-        key_name = CFG.hotkey
-        target = getattr(keyboard.Key, key_name, None)
-        if target is None and len(key_name) == 1:
-            target = keyboard.KeyCode.from_char(key_name)
-        if target is None:
-            sys.exit(f"Unknown HOTKEY '{key_name}'. Try ctrl_r, alt_r, f9, or a single char.")
-
         print(BANNER.format(stt=CFG.stt_model, dev=CFG.stt_device,
-                            tts=CFG.tts_backend, key=key_name))
+                            tts=CFG.tts_backend))
 
         get_model()          # preload so the first turn isn't slow
         self.open_stream()
         threading.Thread(target=self.worker, daemon=True).start()
 
-        print(f"\n  Hold [{key_name}] and speak. Say 'reset' for a new session, "
-              f"'quit' to exit. Ctrl+C to kill.\n")
+        print("\n  Just speak. Say 'reset' for a new session, "
+              "'quit' to exit. Ctrl+C to kill.\n")
 
-        def on_press(k):
-            if k == target:
-                self.start()
-
-        def on_release(k):
-            if k == target:
-                self.stop()
-
-        with keyboard.Listener(on_press=on_press, on_release=on_release) as l:
-            try:
-                l.join()
-            except KeyboardInterrupt:
-                pass
+        try:
+            while True:
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
 
 
 def main():
     try:
-        PushToTalk().run()
+        VoiceLoop().run()
     except KeyboardInterrupt:
         print("\nbye")
     except RuntimeError as e:

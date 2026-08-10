@@ -127,8 +127,9 @@ Then the whole thing:
 python -m rocky.main
 ```
 
-Hold **right Ctrl**, speak, release. Change the key with `HOTKEY=` (`ctrl_r`,
-`alt_r`, `f9`, or any single character).
+Just speak — the mic notices when you start and stop talking, no key to hold.
+Tune sensitivity with `VAD_THRESHOLD=` (higher = less sensitive to background
+noise) and `VAD_SILENCE_MS=` (how long a pause ends your turn) in `.env`.
 
 > ### ⛔ STOP — confirm one full round trip.
 
@@ -153,8 +154,12 @@ missing, launches the loop. That's the daily driver.
 
 # Design decisions worth knowing
 
-- **Silence gate.** Clips under an RMS threshold are dropped, so a stray key
-  tap never invokes the agent. Holds under `MIN_HOLD_MS` are ignored too.
+- **Voice-activated, not push-to-talk.** No global hotkey — laptop OEM
+  keyboard drivers frequently swallow Ctrl/Fn-row keys before a Python-level
+  hook ever sees them, which makes hotkeys unreliable across machines. The
+  mic stream's own RMS energy starts and ends each turn instead.
+- **Silence gate.** Clips under an RMS threshold are dropped, so background
+  noise never invokes the agent. Turns under `MIN_HOLD_MS` are ignored too.
 - **`condition_on_previous_text=False`** in Whisper. Prevents the classic
   hallucination spiral where the model loops a phrase forever on quiet audio.
 - **Single worker thread.** Recording is locked out while thinking or speaking,
@@ -166,11 +171,8 @@ missing, launches the loop. That's the daily driver.
 
 # Known platform quirks
 
-- **macOS:** the first run triggers two OS prompts — Microphone, and
-  Accessibility for `pynput` to read a global hotkey. Grant both in System
-  Settings → Privacy & Security. Terminal must be the app you grant.
-- **Linux:** `pynput` needs X11 or uinput access; on Wayland global hotkeys may
-  need `sudo` or a different capture method.
+- **macOS:** the first run triggers a Microphone permission prompt. Grant it
+  to the Terminal app you're running from.
 - **Windows:** if `pip install sounddevice` can't find PortAudio, install the
   wheel from PyPI rather than building. `py -3.12` is the safest interpreter.
 - **GPU:** `ctranslate2` needs CUDA 12 + cuDNN 9. On CUDA 11 pin
