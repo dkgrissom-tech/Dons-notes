@@ -72,7 +72,7 @@ class Config:
 
     # --- claude code bridge ---
     claude_bin: str = os.environ.get("CLAUDE_BIN", "claude")
-    claude_cwd: str = os.environ.get("CLAUDE_CWD", str(Path.home()))
+    claude_cwd: str = os.environ.get("CLAUDE_CWD", "").strip() or str(Path.home())
     claude_tools: str = os.environ.get(
         "CLAUDE_ALLOWED_TOOLS", "Read,Grep,Glob,Bash,Edit,Write")
     claude_timeout: int = _int("CLAUDE_TIMEOUT", 300)
