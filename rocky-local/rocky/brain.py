@@ -38,6 +38,10 @@ class Brain:
         cmd = [CFG.claude_bin, "-p", (prompt.replace("\n", " ") if sys.platform.startswith("win") else prompt),
                "--output-format", "json",
                "--allowedTools", CFG.claude_tools]
+        if CFG.claude_model:
+            cmd += ["--model", CFG.claude_model]
+        if CFG.claude_permission_mode:
+            cmd += ["--permission-mode", CFG.claude_permission_mode]
         if CFG.persist_session and self.session_id:
             cmd += ["--resume", self.session_id]
         return cmd

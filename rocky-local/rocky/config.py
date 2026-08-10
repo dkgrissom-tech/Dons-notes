@@ -77,6 +77,8 @@ class Config:
         "CLAUDE_ALLOWED_TOOLS", "Read,Grep,Glob,Bash,Edit,Write")
     claude_timeout: int = _int("CLAUDE_TIMEOUT", 300)
     persist_session: bool = os.environ.get("PERSIST_SESSION", "1") == "1"
+    claude_model: str = os.environ.get("CLAUDE_MODEL", "")
+    claude_permission_mode: str = os.environ.get("CLAUDE_PERMISSION_MODE", "")
 
     models_dir: Path = ROOT / "models"
 
