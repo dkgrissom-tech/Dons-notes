@@ -9,9 +9,9 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: macos-15
+    runs-on: xcode-27
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
@@ -86,9 +86,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   submit-appstore:
     if: startsWith(github.ref, 'refs/tags/') && endsWith(github.ref, '-release')
-    runs-on: macos-15
+    runs-on: xcode-27
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
 
